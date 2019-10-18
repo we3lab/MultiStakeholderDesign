@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1536875183461.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "3628489637",
+    "id" : "7C1581AF",
+    "lastKnownWriteTime" : 1534953460,
+    "last_content_update" : 1534953460,
+    "path" : "~/Documents/CADS/CADSProject/Code/WastewaterExpert/app.R",
+    "project_path" : null,
+    "properties" : {
+        "cursorPosition" : "567,0",
+        "scrollLine" : "1"
+    },
+    "relative_order" : 2,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

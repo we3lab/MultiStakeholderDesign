@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1536874832463.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "1150099030",
+    "id" : "D5E8852B",
+    "lastKnownWriteTime" : 1536874922,
+    "last_content_update" : 1536874922164,
+    "path" : "~/Documents/CADS/CADSProject/Code/WellpadSession2/app.R",
+    "project_path" : "app.R",
+    "properties" : {
+        "cursorPosition" : "276,4",
+        "scrollLine" : "253"
+    },
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

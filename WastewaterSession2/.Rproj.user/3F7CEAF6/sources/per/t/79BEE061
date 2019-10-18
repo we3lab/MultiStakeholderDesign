@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1536875172076.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "2874821906",
+    "id" : "79BEE061",
+    "lastKnownWriteTime" : 1536875237,
+    "last_content_update" : 1536875237114,
+    "path" : "~/Documents/CADS/CADSProject/Code/WastewaterSession2/app.R",
+    "project_path" : "app.R",
+    "properties" : {
+        "cursorPosition" : "338,125",
+        "scrollLine" : "325"
+    },
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

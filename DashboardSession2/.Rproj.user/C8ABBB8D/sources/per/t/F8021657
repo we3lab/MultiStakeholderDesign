@@ -1,0 +1,20 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1556130428271.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "2116454277",
+    "id" : "F8021657",
+    "lastKnownWriteTime" : 1549308705,
+    "last_content_update" : 1549308705,
+    "path" : "~/CADS/CADSProject/Code/DashboardSession2/app.R",
+    "project_path" : "app.R",
+    "properties" : {
+    },
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

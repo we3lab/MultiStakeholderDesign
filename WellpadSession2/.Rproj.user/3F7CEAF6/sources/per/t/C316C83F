@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1536874860422.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "1992435570",
+    "id" : "C316C83F",
+    "lastKnownWriteTime" : 1534954323,
+    "last_content_update" : 1534954323,
+    "path" : "~/Documents/CADS/CADSProject/Code/WellpadOperator/app.R",
+    "project_path" : null,
+    "properties" : {
+        "cursorPosition" : "498,0",
+        "scrollLine" : "0"
+    },
+    "relative_order" : 2,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

@@ -1,0 +1,1400 @@
+---
+title: "DataAnalysis"
+author: "Niles Guo"
+date: "11/4/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(googlesheets)
+library(rlang)
+library(curl)
+library(openssl)
+library(hms)
+library(Rmisc)
+library(dplyr)
+library(shiny)
+library(shinydashboard)
+library(tables)
+library(tidyr)
+library(highcharter)
+library(httr)
+library(leaflet)
+library(jsonlite)
+library(leaflet)
+library(googledrive)
+library(DT)
+library(rPref)
+library(ggalt)
+library(lme4)
+library(multiwayvcov)
+library(miceadds)
+library(stargazer)
+library(ICC)
+library(effsize)
+library(pwr)
+library(xtable)
+library(car)
+library(texreg)
+library(TrialSize)
+library(ggforce)
+library(PowerTOST)
+library(sandwich)
+library(lmtest)
+library(wesanderson)
+library(BayesFactor)
+
+```
+
+## Experimental Setup
+
+During the study, 101 CMU students (70 graduate students and 31 undergraduate students) contacted the researcher to volunteer for the study. 88 students (64 graudate, 24 undergradute) were subsequently recruited (87%). These students were randomly assigned to 22 groups, each with four students.
+
+```{r resultSetup, include = FALSE}
+
+#Register the googlesheet with R
+results.full <- gs_url("https://docs.google.com/spreadsheets/d/1ZqIuB1tCAUin57Quaiw1gJlJ9_1eoei5UY4tlDZ4BBc/edit#gid=0")
+
+#Downloading the data
+validation.q <- results.full%>%
+  gs_read("Prestudy Validations")
+
+#Getting group task 1 results
+task1 <- results.full%>%
+  gs_read("Task1")
+
+#Getting group task 2 results
+task2 <- results.full%>%
+  gs_read("Task2")
+
+#Getting group task 3 results
+task3 <- results.full%>%
+  gs_read("Task3")
+
+#Getting all groups results
+
+regression.analysis.raw <- results.full%>%
+  gs_read("RegressionAnalysis")%>%
+  mutate(Task = ifelse(IndiTask == 1, "aIndividualTask", ifelse(CollabTask == 1, "bCollaborationTask", "cCADSTask")))%>%
+  mutate(Order = as.factor(OrderGrp))
+
+#Pulling in the solutions on the Pareto Frontier, also generated the non-inferiority interval
+df2 <- read.csv("paretofrontier.csv")%>%
+  select("FinancialCost", "EnvironmentalCost")%>%
+  mutate(y = FinancialCost, x = EnvironmentalCost)%>%
+  select(x, y)%>%
+  mutate(radius = sqrt((0.14*x)^2 + (0.14*y)^2))%>%
+  mutate(xdir = x*0.2, ydir = 0.2*y)
+
+#Assigning Group Orders to full results
+
+mutated.regression.analysis <- regression.analysis.raw%>%
+  mutate(Task1 = ifelse(Task == "aIndividualTask", "aIndividualTask", 
+                        ifelse(Task == "bCollaborationTask" & OrderGrp == 1, "bCollaborationReversed", 
+                               ifelse(Task == "bCollaborationTask" & OrderGrp == 0, "bCollaborationTask", 
+                                      ifelse(Task == "cCADSTask" & OrderGrp == 1, "cCADSReversed", "cCADSTask")))))
+
+
+```
+
+## Plotting H1 Results
+
+The first hypothesis stated that participants using CADS will generate solutions no worse than 20% of a solution in the Pareto set. To test this hypothesis, we first identified the solutions in the pareto set. We then generated the 20% bound by creating a circle with a radius that is 20% of the euclidean cost of each pareto solution. Qualitatively, we then overalay the set of outcomes that each group generated using CADS on top of the circles. As we can see, all but 1 group generated a solution using CADS within the 20% radius of the pareto solutions.
+
+We can also conduct an one-sample non-inferiority test to test this hypothesis, where:
+
+$$H_{o}: \mu_{T} \geq \mu_{R} + M_{NI}$$ 
+and:
+
+$$H_{a}: \mu_{T} < \mu_{R} + M_{NI}$$ 
+where: 
+$\mu_{T}$ represents the sample mean, here representing the euclidean distance of the outcomes generated using CADS to their closest pareto solution,
+$\mu_{R}$ represents the reference mean, which is zero, 
+$M_{NI}$ represents the margin of non-inferiority, which is the mean of 20% radius for each of the pareto solutions.  
+
+If the null hypothesis can be rejected using an one-tail t-test, it would mean that the average distance of the CADS outcomes from their closest pareto solution is less than the non-inferiority margin. The t-value is calculated to be -1.81, which correspond to a p-value of < 0.05 at df 21. This shows we can reject the null hypothesis with a significance level of 0.05, showing the non-inferiority of CADS outcomes when compared against the pareto solutions. 
+
+```{r nonInferiorityPlot, echo=FALSE}
+
+# Individual Designs and Pareto Margin
+ggplot() +
+  coord_fixed() +
+  geom_arc_bar(aes(x0 = y, y0 = x, r0 =0, r = radius, start = 0, end = pi/2), data = df2, color = "gray88", fill = "gray88")+
+  geom_point(aes(x = y, y = x), data = df2, color = "black") +
+  geom_point(data = individual.task, aes(x = FinCost, y = EnvCost), color = "red2") +
+  stat_ellipse(data = individual.task, aes(x = FinCost, y = EnvCost), type = "norm", color = "red2", linetype = 2) +
+  labs(y = "Environmental Cost in $M", x = "Financial Cost in $M") + 
+  ggtitle("A") + 
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 60), sec.axis = sec_axis(~./1), breaks = c(0, 20, 40, 60))+
+  scale_x_continuous(expand = c(0, 0), limits = c(0, 110), sec.axis = sec_axis(~./1), breaks = c(0, 20, 40, 60, 80, 100)) +
+  theme_classic() + theme(plot.title = element_text(size = 24, face = "bold"), 
+                          axis.text.x = element_text(size = 18, family = "sans"), 
+                          axis.text.y = element_text(size = 18, family = "sans"), 
+                          axis.title.x = element_text(size = 18, family = "sans"),
+                          axis.title.y = element_text(size = 18, family = "sans"),
+                          axis.text.y.right = element_blank(),
+                          axis.text.x.top = element_blank(),
+                          axis.ticks.x.top = element_blank(),
+                          axis.ticks.y.right = element_blank(),
+                          legend.title = element_text(size = 18, family = "sans"),
+                          legend.text = element_text(size = 18, family = "sans")) +
+  theme(aspect.ratio = 1)
+
+
+# Collaboration Designs and Pareto Margin
+ggplot() +
+  coord_fixed() +
+  geom_arc_bar(aes(x0 = y, y0 = x, r0 =0, r = radius, start = 0, end = pi/2), data = df2, color = "gray88", fill = "gray88") +
+  geom_point(aes(x = y, y = x), data = df2, color = "black") +
+  geom_point(data = collab.task, aes(x = FinCost, y = EnvCost),  color = "red2") +
+  stat_ellipse(data = collab.task, aes(x = FinCost, y = EnvCost), type = "norm", color = "red2", linetype = 2) +
+  labs(y = "Environmental Cost in $M", x = "Financial Cost in $M") + 
+  ggtitle("C") + 
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 60), sec.axis = sec_axis(~./1), breaks = c(0, 20, 40, 60))+
+  scale_x_continuous(expand = c(0, 0), limits = c(0, 110), sec.axis = sec_axis(~./1), breaks = c(0, 20, 40, 60, 80, 100)) +
+  theme_classic() + theme(plot.title = element_text(size = 24, face = "bold"), 
+                          axis.text.x = element_text(size = 18, family = "sans"), 
+                          axis.text.y = element_text(size = 18, family = "sans"), 
+                          axis.title.x = element_text(size = 18, family = "sans"),
+                          axis.title.y = element_text(size = 18, family = "sans"),
+                          axis.text.y.right = element_blank(),
+                          axis.text.x.top = element_blank(),
+                          axis.ticks.x.top = element_blank(),
+                          axis.ticks.y.right = element_blank(),
+                          legend.title = element_text(size = 18, family = "sans"),
+                          legend.text = element_text(size = 18, family = "sans")) +
+  theme(aspect.ratio = 1)
+
+
+
+# CADS Designs and Pareto Margin
+ggplot() +
+  coord_fixed() +
+  geom_arc_bar(aes(x0 = y, y0 = x, r0 = 0, r = radius, start = 0, end = pi/2), data = df2, color = "gray88", fill = "gray88")+
+  geom_point(aes(x = y, y = x), data = df2, color = "black") +
+  geom_point(data = CADS.task, aes(x = FinCost, y = EnvCost), color = "red2") +
+  stat_ellipse(data = CADS.task, aes(x = FinCost, y = EnvCost), type = "norm", color = "red2", linetype = 2) +
+  labs(y = "Environmental Cost in $M", x = "Financial Cost in $M") + 
+  ggtitle("B") + 
+  scale_y_continuous(expand = c(0,0), limits = c(0, 60), sec.axis = sec_axis(~./1), breaks = c(0, 20, 40, 60))+
+  scale_x_continuous(expand = c(0,0), limits = c(0, 110), sec.axis = sec_axis(~./1), breaks = c(0, 20, 40, 60, 80, 100)) +
+  theme_classic() + theme(plot.title = element_text(size = 24, face = "bold"), 
+                          axis.text.x = element_text(size = 18, family = "sans"), 
+                          axis.text.y = element_text(size = 18, family = "sans"), 
+                          axis.title.x = element_text(size = 18, family = "sans"),
+                          axis.title.y = element_text(size = 18, family = "sans"),
+                          axis.text.y.right = element_blank(),
+                          axis.text.x.top = element_blank(),
+                          axis.ticks.x.top = element_blank(),
+                          axis.ticks.y.right = element_blank(),
+                          legend.title = element_text(size = 18, family = "sans"),
+                          legend.text = element_text(size = 18, family = "sans")) +
+  theme(aspect.ratio = 1)
+
+# Collaboration First Designs and Pareto Margin
+ggplot() +
+  coord_fixed() +
+  geom_arc_bar(aes(x0 = y, y0 = x, r0 = 0, r = radius, start = 0, end = pi/2), data = df2, color = "gray88", fill = "gray88")+
+  geom_point(aes(x = y, y = x), data = df2, color = "black") +
+  geom_point(data = collab.task.first, aes(x = FinCost, y = EnvCost), color = "red2") +
+  stat_ellipse(data = collab.task.first, aes(x = FinCost, y = EnvCost), type = "norm", color = "red2", linetype = 2) +
+  labs(y = "Environmental Cost in $M", x = "Financial Cost in $M") + 
+  ggtitle("C") + 
+  scale_y_continuous(expand = c(0,0), limits = c(0, 60), sec.axis = sec_axis(~./1), breaks = c(0, 20, 40, 60))+
+  scale_x_continuous(expand = c(0,0), limits = c(0, 110), sec.axis = sec_axis(~./1), breaks = c(0, 20, 40, 60, 80, 100)) +
+  theme_classic() + theme(plot.title = element_text(size = 24, face = "bold"), 
+                          axis.text.x = element_text(size = 18, family = "sans"), 
+                          axis.text.y = element_text(size = 18, family = "sans"), 
+                          axis.title.x = element_text(size = 18, family = "sans"),
+                          axis.title.y = element_text(size = 18, family = "sans"),
+                          axis.text.y.right = element_blank(),
+                          axis.text.x.top = element_blank(),
+                          axis.ticks.x.top = element_blank(),
+                          axis.ticks.y.right = element_blank(),
+                          legend.title = element_text(size = 18, family = "sans"),
+                          legend.text = element_text(size = 18, family = "sans")) +
+  theme(aspect.ratio = 1)
+
+# Collaboration Second Designs and Pareto Margin
+ggplot() +
+  coord_fixed() +
+  geom_arc_bar(aes(x0 = y, y0 = x, r0 = 0, r = radius, start = 0, end = pi/2), data = df2, color = "gray88", fill = "gray88")+
+  geom_point(aes(x = y, y = x), data = df2, color = "black") +
+  geom_point(data = collab.task.second, aes(x = FinCost, y = EnvCost), color = "red2") +
+  stat_ellipse(data = collab.task.second, aes(x = FinCost, y = EnvCost), type = "norm", color = "red2", linetype = 2) +
+  labs(y = "Environmental Cost in $M", x = "Financial Cost in $M") + 
+  ggtitle("D") + 
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 60), sec.axis = sec_axis(~./1), breaks = c(0, 20, 40, 60))+
+  scale_x_continuous(expand = c(0,0), limits = c(0, 110), sec.axis = sec_axis(~./1), breaks = c(0, 20,40,60,80,100)) +
+  theme_classic() + theme(plot.title = element_text(size = 24, face = "bold"), 
+                          axis.text.x = element_text(size = 18, family = "sans"), 
+                          axis.text.y = element_text(size = 18, family = "sans"), 
+                          axis.title.x = element_text(size = 18, family = "sans"),
+                          axis.title.y = element_text(size = 18, family = "sans"),
+                          axis.text.y.right = element_blank(),
+                          axis.text.x.top = element_blank(),
+                          axis.ticks.x.top = element_blank(),
+                          axis.ticks.y.right = element_blank(),
+                          legend.title = element_text(size = 18, family = "sans"),
+                          legend.text = element_text(size = 18, family = "sans")) +
+  theme(aspect.ratio = 1)
+
+# CADS Second Designs and Pareto Margin
+ggplot() +
+  coord_fixed() +
+  geom_circle(aes(x0 = y, y0 = x, r = radius), data = df2, color = "gray88", fill = "gray88")+
+  geom_point(aes(x = y, y = x), data = df2, color = "black") +
+  geom_point(data = CADS.task.first, aes(x = FinCost, y = EnvCost), color = "red2") +
+  stat_ellipse(data = CADS.task.first, aes(x = FinCost, y = EnvCost), type = "norm", color = "red2", linetype = 2) +
+  labs(y = "Environmental Cost in $Million", x = "Financial Cost in $Million") + 
+  ggtitle("C: CADS Task \n(Collaboration before CADS)") + 
+  scale_y_continuous(sec.axis = sec_axis(~./1), breaks = c(0, 4, 8, 12, 16, 20))+
+  scale_x_continuous(sec.axis = sec_axis(~./1)) +
+  expand_limits(x = 20, y = 5)+
+  theme_classic() + theme(plot.title = element_text(hjust = 0.5, size = 20, face = "bold"), 
+                          axis.text.x = element_text(size = 16, family = "sans"), 
+                          axis.text.y = element_text(size = 16, family = "sans"), 
+                          axis.title.x = element_text(size = 16, family = "sans"),
+                          axis.title.y = element_text(size = 16, family = "sans"),
+                          axis.text.y.right = element_blank(),
+                          axis.text.x.top = element_blank(),
+                          axis.ticks.x.top = element_blank(),
+                          axis.ticks.y.right = element_blank(),
+                          legend.title = element_text(size = 16, family = "sans"),
+                          legend.text = element_text(size = 16, family = "sans")) +
+  theme(aspect.ratio = 1)
+
+# CADS First Designs and Pareto Margin
+ggplot() +
+  coord_fixed() +
+  geom_circle(aes(x0 = y, y0 = x, r = radius), data = df2, color = "gray88", fill = "gray88")+
+  geom_point(aes(x = y, y = x), data = df2, color = "black") +
+  geom_point(data = CADS.task.second, aes(x = FinCost, y = EnvCost), color = "red2") +
+  stat_ellipse(data = CADS.task.second, aes(x = FinCost, y = EnvCost), type = "norm", color = "red2", linetype = 2) +
+  labs(y = "Environmental Cost in $Million", x = "Finanncial Cost in $Million") + 
+  ggtitle("D: CADS Task \n(Collaboration after CADS)") + 
+  scale_y_continuous(sec.axis = sec_axis(~./1), breaks = c(0, 4, 8, 12, 16, 20))+
+  scale_x_continuous(sec.axis = sec_axis(~./1)) +
+  expand_limits(x = 20, y = 5)+
+  theme_classic() + theme(plot.title = element_text(hjust = 0.5, size = 20, face = "bold"), 
+                          axis.text.x = element_text(size = 16, family = "sans"), 
+                          axis.text.y = element_text(size = 16, family = "sans"), 
+                          axis.title.x = element_text(size = 16, family = "sans"),
+                          axis.title.y = element_text(size = 16, family = "sans"),
+                          axis.text.y.right = element_blank(),
+                          axis.text.x.top = element_blank(),
+                          axis.ticks.x.top = element_blank(),
+                          axis.ticks.y.right = element_blank(),
+                          legend.title = element_text(size = 16, family = "sans"),
+                          legend.text = element_text(size = 16, family = "sans")) +
+  theme(aspect.ratio = 1)
+
+```
+
+## Non-inferiority Test and Bayes Factor Test
+
+Under this test, the CADS task has a t-statistic of -1.81 (df = 21, p = 0.04), compared to informal collaboration task t-statistic of -0.05 (df = 21, p = 0.48), or independent task t-statistic of 0.55 (df = 21, p = 0.70). We could only reject the null hypothesis for outcomes generated through the CADS task, indicating that only the CADS task outcomes are statistically within the margin of non-inferiority of the Pareto efficient solutions. 
+
+The order in which participants received the task with CADS feedback did not affect their overlap with the non-inferiority margin, whereas the order in which participants received the informal collaboration task had a large effect. If the collaboration task was first, the t-statistic is 0.17 (df = 13, p = 0.57) showing no statistical evidence that groups generated designs inside the non-inferiority region, whereas if the collaboration task was second, the t-statistic is -2.30 (df = 7, p ≤ 0.05) showing statistical evidence that these groups generated designs inside the non-inferiority region. On the other hand, if the CADS task was first, the t-statistic is -1.85 (df = 7, p ≤ 0.05), where as if the CADS task was second, the t-statistic is -1.81 (df = 13, p ≤ 0.05) showing that the order of the CADS task did not change the statistical significance of the result.
+
+```{r NITValues}
+
+#Subsetting data to research task
+#Individual Design Tasks
+individual.task <- mutated.regression.analysis%>%
+  filter(Task1 == "aIndividualTask")
+
+#All Collaboration Tasks
+collab.task <- mutated.regression.analysis%>%
+  filter(Task == "bCollaborationTask")
+
+#Groups who completed collaboration tasks first
+collab.task.first <- mutated.regression.analysis%>%
+  filter(Task1 == "bCollaborationTask")
+
+#Groups who completed collaboration tasks second - Order reversed
+collab.task.second <- mutated.regression.analysis%>%
+  filter(Task1 == "bCollaborationReversed")
+
+#All CADS tasks
+CADS.task <- mutated.regression.analysis%>%
+  filter(Task == "cCADSTask")
+
+#Groups who completed CADS tasks first - Order reversed
+CADS.task.first <- mutated.regression.analysis%>%
+  filter(Task1 == "cCADSTask")
+
+#Groups who completed CADS tasks second
+CADS.task.second <- mutated.regression.analysis%>%
+  filter(Task1 == "cCADSReversed")
+
+#Initializing Distance Calculation Variables
+euc.distance <- c()
+result.distance <- c()
+euc.distance.raw <- c()
+euc.distance.indi <- c()
+euc.distance.collab <- c()
+euc.distance.CADS <- c()
+euc.distance2 <- c()
+euc.bound <- c()
+euc.bound.calc <- c()
+euc.bound.collab1 <- c()
+euc.bound.collab2 <- c()
+euc.bound.CADS1 <- c()
+euc.bound.CADS2 <- c()
+
+#Selecting Individual  tasks
+df1 <- individual.task%>%
+  select("FinCost", "EnvCost")%>%
+  mutate(x = EnvCost, y = FinCost)%>%
+  select(x,y)
+
+#Loop to identify the closest Pareto Solution to each generated solution, then calculates the distance to the closest Pareto Solution
+for (j in 1:nrow(df1)){
+  
+  for (i in 1:nrow(df2)){
+    
+    euc.distance.raw[i] <- (sqrt((df1[j,1] - df2[i,1])^2 + (df1[j,2] - df2[i,2])^2))
+    euc.distance.indi[j] <- min(unlist(euc.distance.raw))
+    euc.distance[j] <- which(euc.distance.raw == min(unlist(euc.distance.raw)))
+    euc.bound[j] <- euc.distance.indi[j] - sqrt((df2[(euc.distance[j]), 1] - df2[(euc.distance[j]), 1]*1.14)^2 + (df2[(euc.distance[j]), 2] - df2[(euc.distance[j]), 2]*1.14)^2)
+    
+  }
+  
+}
+
+#Generate the non-inferiority region
+
+bound.distance1 <- c()
+
+for (i in 1:nrow(df2)){
+  
+  bound.distance1[i] <- sqrt((df2[i,1]*1.14 - df2[i,1])^2 + (df2[i,2]*1.14 - df2[i,2])^2)
+  
+}
+
+
+#T statistic of individual design task with non-inferiority region
+t.value.individual <- (mean(euc.distance.indi) - mean(bound.distance1))/sd(euc.distance.indi)
+
+#Selecting Collaboration Tasks
+df1 <- collab.task%>%
+  select("FinCost", "EnvCost")%>%
+  mutate(x = EnvCost, y = FinCost)%>%
+  select(x,y)
+
+#Loop to identify the closest Pareto Solution to each generated solution, then calculates the distance to the closest Pareto Solution
+for (j in 1:nrow(df1)){
+  
+  for (i in 1:nrow(df2)){
+    
+    euc.distance.raw[i] <- (sqrt((df1[j,1] - df2[i,1])^2 + (df1[j,2] - df2[i,2])^2))
+    euc.distance.collab[j] <- min(unlist(euc.distance.raw))
+    euc.distance[j] <- which(euc.distance.raw == min(unlist(euc.distance.raw)))
+    euc.bound[j] <- euc.distance.indi[j] - sqrt((df2[(euc.distance[j]), 1] - df2[(euc.distance[j]), 1]*1.14)^2 + (df2[(euc.distance[j]), 2] - df2[(euc.distance[j]), 2]*1.14)^2)
+    
+  }
+  
+}
+
+#T statistic of collaboration design task with non-inferiority region
+t.value.collab <- (mean(euc.distance.collab) - mean(bound.distance1))/sd(euc.distance.collab)
+
+#Selecting CADS task
+df1 <- CADS.task%>%
+  select("FinCost", "EnvCost")%>%
+  mutate(x = EnvCost, y = FinCost)%>%
+  select(x,y)
+
+#Loop to identify the closest Pareto Solution to each generated solution, then calculates the distance to the closest Pareto Solution
+for (j in 1:nrow(df1)){
+  
+  for (i in 1:nrow(df2)){
+    
+    euc.distance.raw[i] <- (sqrt((df1[j,1] - df2[i,1])^2 + (df1[j,2] - df2[i,2])^2))
+    euc.distance.CADS[j] <- min(unlist(euc.distance.raw))
+    euc.distance[j] <- which(euc.distance.raw == min(unlist(euc.distance.raw)))
+    euc.bound[j] <- euc.distance.indi[j] - sqrt((df2[(euc.distance[j]), 1] - df2[(euc.distance[j]), 1]*1.14)^2 + (df2[(euc.distance[j]), 2] - df2[(euc.distance[j]), 2]*1.14)^2)
+    
+  }
+  
+}
+
+#T statistic for CADS task with non-inferiority region
+t.value.CADS <- (mean(euc.distance.CADS) - mean(bound.distance1))/sd(euc.distance.CADS)
+
+#Selecting Collaboration task first
+df1 <- collab.task.first%>%
+  select("FinCost", "EnvCost")%>%
+  mutate(x = EnvCost, y = FinCost)%>%
+  select(x,y)
+
+#Loop to identify the closest Pareto Solution to each generated solution, then calculates the distance to the closest Pareto Solution
+for (j in 1:nrow(df1)){
+  
+  for (i in 1:nrow(df2)){
+    
+    euc.distance.raw[i] <- (sqrt((df1[j,1] - df2[i,1])^2 + (df1[j,2] - df2[i,2])^2))
+    euc.bound.collab1[j] <- min(unlist(euc.distance.raw))
+    euc.distance[j] <- which(euc.distance.raw == min(unlist(euc.distance.raw)))
+    euc.bound[j] <- euc.distance.indi[j] - sqrt((df2[(euc.distance[j]), 1] - df2[(euc.distance[j]), 1]*1.14)^2 + (df2[(euc.distance[j]), 2] - df2[(euc.distance[j]), 2]*1.14)^2)
+    
+  }
+  
+}
+
+#T statistic for Collaboration task first with non-inferiority region
+t.value.collab1 <- (mean(euc.bound.collab1) - mean(bound.distance1))/sd(euc.bound.collab1)
+
+
+#Selecting Collaboration task second
+df1 <- collab.task.second%>%
+  select("FinCost", "EnvCost")%>%
+  mutate(x = EnvCost, y = FinCost)%>%
+  select(x,y)
+
+#Loop to identify the closest Pareto Solution to each generated solution, then calculates the distance to the closest Pareto Solution
+for (j in 1:nrow(df1)){
+  
+  for (i in 1:nrow(df2)){
+    
+    euc.distance.raw[i] <- (sqrt((df1[j,1] - df2[i,1])^2 + (df1[j,2] - df2[i,2])^2))
+    euc.bound.collab2[j] <- min(unlist(euc.distance.raw))
+    euc.distance[j] <- which(euc.distance.raw == min(unlist(euc.distance.raw)))
+    euc.bound[j] <- euc.distance.indi[j] - sqrt((df2[(euc.distance[j]), 1] - df2[(euc.distance[j]), 1]*1.14)^2 + (df2[(euc.distance[j]), 2] - df2[(euc.distance[j]), 2]*1.14)^2)
+    
+  }
+  
+}
+
+#T statistic for Collaboration task second with non-inferiority region
+t.value.collab2 <- (mean(euc.bound.collab2) - mean(bound.distance1))/sd(euc.bound.collab2)
+
+#Selecting CADS task first
+df1 <- CADS.task.first%>%
+  select("FinCost", "EnvCost")%>%
+  mutate(x = EnvCost, y = FinCost)%>%
+  select(x,y)
+
+#Loop to identify the closest Pareto Solution to each generated solution, then calculates the distance to the closest Pareto Solution
+for (j in 1:nrow(df1)){
+  
+  for (i in 1:nrow(df2)){
+    
+    euc.distance.raw[i] <- (sqrt((df1[j,1] - df2[i,1])^2 + (df1[j,2] - df2[i,2])^2))
+    euc.bound.CADS1[j] <- min(unlist(euc.distance.raw))
+    euc.distance[j] <- which(euc.distance.raw == min(unlist(euc.distance.raw)))
+    euc.bound[j] <- euc.distance.indi[j] - sqrt((df2[(euc.distance[j]), 1] - df2[(euc.distance[j]), 1]*1.14)^2 + (df2[(euc.distance[j]), 2] - df2[(euc.distance[j]), 2]*1.14)^2)
+    
+  }
+  
+}
+
+#T statistic for CADS task first with non-inferiority region
+t.value.CADS1 <- (mean(euc.bound.CADS1) - mean(bound.distance1))/sd(euc.bound.CADS1)
+
+#Selecting CADS task Second
+df1 <- CADS.task.second%>%
+  select("FinCost", "EnvCost")%>%
+  mutate(x = EnvCost, y = FinCost)%>%
+  select(x,y)
+
+#Loop to identify the closest Pareto Solution to each generated solution, then calculates the distance to the closest Pareto Solution
+for (j in 1:nrow(df1)){
+  
+  for (i in 1:nrow(df2)){
+    
+    euc.distance.raw[i] <- (sqrt((df1[j,1] - df2[i,1])^2 + (df1[j,2] - df2[i,2])^2))
+    euc.bound.CADS2[j] <- min(unlist(euc.distance.raw))
+    euc.distance[j] <- which(euc.distance.raw == min(unlist(euc.distance.raw)))
+    euc.bound[j] <- euc.distance.indi[j] - sqrt((df2[(euc.distance[j]), 1] - df2[(euc.distance[j]), 1]*1.14)^2 + (df2[(euc.distance[j]), 2] - df2[(euc.distance[j]), 2]*1.14)^2)
+    
+  }
+  
+}
+
+#T statistic for CADS task second with non-inferiority region
+t.value.CADS2 <- (mean(euc.bound.CADS2) - mean(bound.distance1))/sd(euc.bound.CADS2)
+
+#Conducting Bayes factor test
+Task <- c(rep("Pareto", 10))
+h1.mean <- as.data.frame(cbind(bound.distance1, Task))
+
+colnames(h1.mean)[1] <- "Measurement"
+
+Task <- c(rep("Individual", 22))
+h1.indi <- as.data.frame(cbind(as.numeric(euc.distance.indi), Task))
+colnames(h1.indi)[1] <- "Measurement"
+
+h1.individual <- rbind(h1.indi, h1.mean)%>%
+  mutate(Distance = as.numeric(as.character(Measurement)))
+
+bf.1 <- ttestBF(formula = Distance ~ Task, data = h1.individual)
+
+Task <- c(rep("Collaboration", 22))
+h1.collab <- as.data.frame(cbind(as.numeric(euc.distance.collab), Task))
+colnames(h1.collab)[1] <- "Measurement"
+
+h1.collaboration <- rbind(h1.collab, h1.mean)%>%
+  mutate(Distance = as.numeric(as.character(Measurement)))
+
+bf.2 <- ttestBF(formula = Distance ~ Task, data = h1.collaboration)
+
+Task <- c(rep("Collaboration", 14))
+h1.collab.first <- as.data.frame(cbind(as.numeric(euc.bound.collab1), Task))
+colnames(h1.collab.first)[1] <- "Measurement"
+
+h1.collaboration.first <- rbind(h1.collab.first, h1.mean)%>%
+  mutate(Distance = as.numeric(as.character(Measurement)))
+
+bf.3 <- ttestBF(formula = Distance ~ Task, data = h1.collaboration.first)
+
+Task <- c(rep("CADS", 22))
+h1.CADS <- as.data.frame(cbind(as.numeric(euc.distance.CADS), Task))
+colnames(h1.CADS)[1] <- "Measurement"
+
+h1.CADS.final <- rbind(h1.CADS, h1.mean)%>%
+  mutate(Distance = as.numeric(as.character(Measurement)))
+
+bf.4 <- ttestBF(formula = Distance ~ Task, data = h1.CADS.final)
+
+
+```
+
+## Treatment Effect Sizes (Cohen's d)
+
+However, due to the limited number of groups we were able to observe, it is worth to understand whether this sample size would limit either the statistical power of analysis, or potential measurement of the actual treatment effects. We can measure this by first finding the effect size of the treatment (Participants using CADS) on our benchmark case (individual design task), and then conduct a power analysis using the measured effect size.
+
+Using Cohen's D as the measurement of effect size, we can see that the collaboration task's cohen's d is approximately 0.70, and the CADS Task's cohen's d is approximately 1.48 (which signifies a large effect size). However, it is important to note that the 95% CI of the effect size is large, with the CADS task ranging from 0.79 to 2.17. 
+
+The power analysis of the CADS Task's Cohen's D shows that at 0.005 significance level, the power of the test is 0.9997 with a sample size of 22. The Wilcoxon also shows that between individual task and CADS task at significance level < 0.001, the mean financial costs are not the same. This is also true between collaboration task and CADS task at significance level < 0.001. 
+
+The effect size of the environmental objective is lower than the financial cost. However, the effect size is still measured as large, with a mean value of 0.99. Using this as the effect size for the power test, the statistical power of the sample size is still sufficient (sig level of 0.05 and power of essentially 0.95).  
+
+Conducting the Wilcoxon test on both the mean of the CADS task against the individual task and the CADS task against the collaboration task show that the the means are not the same with significance level at 0.005. This shows that the effect size is significant.
+
+```{r effectSizes}
+#Measuring Treatment effect sizes: Financial Cost objective
+
+cohen.d.individual.collaboration <- regression.analysis.raw%>%
+  filter(IndiTask == 1 | CollabTask == 1)%>%
+  select(Group, Task, FinCost)
+
+#Collaboration Treatment size for Financial Cost
+collaboration.effect.size <- cohen.d(data = cohen.d.individual.collaboration, FinCost ~ Task, paired = TRUE)
+
+#Conducting the wilcox test
+wilcox.test(FinCost ~ Task, data = cohen.d.individual.collaboration, paired = TRUE)
+
+#CADS treatment size for financial cost
+cohen.d.individual.CADS <- regression.analysis.raw%>%
+  filter(IndiTask == 1 | CADSTask == 1)%>%
+  select(Group, Task, FinCost)
+
+cads.effect.size <-  cohen.d(data = cohen.d.individual.CADS, FinCost ~ Task, paired = TRUE)
+
+#Conducting the wilcox test
+wilcox.test(FinCost ~ Task, data = cohen.d.individual.CADS, paired = TRUE)
+
+#Treatment effect size with CADS against collaboration
+cohen.d.collaboration.CADS <- regression.analysis.raw%>%
+  filter(CADSTask == 1 | CollabTask == 1)%>%
+  select(Group, Task, FinCost)
+
+cads.effect.size.collaboration <-  cohen.d(data = cohen.d.collaboration.CADS, FinCost ~ Task, paired = TRUE)
+
+#Conducting the wilcox test
+wilcox.test(FinCost ~ Task, data = cohen.d.collaboration.CADS)
+
+#Conducting the same treatment effect size estimation for environmental cost
+cohen.d.individual.collaboration.env <- regression.analysis.raw%>%
+  filter(IndiTask == 1 | CollabTask == 1)%>%
+  select(Group, Task, EnvCost)
+
+collaboration.effect.size.env <- cohen.d(data = cohen.d.individual.collaboration.env, EnvCost ~ Task, paired = TRUE)
+
+cohen.d.individual.CADS.env <- regression.analysis.raw%>%
+  filter(IndiTask == 1 | CADSTask == 1)%>%
+  select(Group, Task, EnvCost)
+
+cads.effect.size.env <-  cohen.d(data = cohen.d.individual.CADS.env, EnvCost ~ Task, paired = TRUE)
+
+pwr.t.test(n = 22, d = 0.99, sig.level = 0.01, type = "paired")
+
+wilcox.test(EnvCost ~ Task, data = cohen.d.individual.CADS.env)
+wilcox.test(EnvCost ~ Task, data = cohen.d.individual.collaboration.env)
+
+```
+
+## Variable Transformation
+
+When investigating each task for both objectives, we see that they all exhibit similar behaviours. All of them are skewed right, with a long tail to the right. However, when overlapping all three distributions together, we can quickly see that participants completing CADS task have a narrower distribution than either the collaboration task and the individual design task. 
+
+In addition, when examining the QQ-plots for each group, we can see that while the the points near the median lie closely to the line, the points near the upper and lower ends of the distribution show distinct skewness. 
+
+For the environmental cost objective: Looking at the histograms, we see that it exhibits similar behaviour as the financial cost objective, with a left-skewed distribution with a long tail. However, one interesting note is that the third task already has a somewhat normal distribution, and further transformation might not be appropriate.
+
+```{r logTransformation}
+
+individual.task.fin <- regression.analysis.raw%>%
+  filter(IndiTask == 1)%>%
+  select(Group, Task, FinCost)
+
+individual.task.env <- regression.analysis.raw%>%
+  filter(IndiTask == 1)%>%
+  select(Group, Task, EnvCost)
+
+collab.task.fin <- regression.analysis.raw%>%
+  filter(CollabTask == 1)%>%
+  select(Group, Task, FinCost)
+
+collab.task.env <- regression.analysis.raw%>%
+  filter(CollabTask == 1)%>%
+  select(Group, Task, EnvCost)
+
+CADS.task.fin <- regression.analysis.raw%>%
+  filter(CADSTask == 1)%>%
+  select(Group, Task, FinCost)
+
+CADS.task.env <- regression.analysis.raw%>%
+  filter(CADSTask == 1)%>%
+  select(Group, Task, EnvCost)
+
+#Financial Objective
+#Individual Task probability density plot + histogram
+ggplot(data = individual.task.fin, aes(x=FinCost)) + 
+  geom_histogram(aes( y = ..density..), fill = "red", bins = 15) +
+  geom_density() + 
+  labs(x = "Financial Cost in $Millions", y = "Probability Density") +
+  ggtitle("Financial Cost Distribution of Individual Task") +
+  theme_classic() + 
+  theme(plot.title = element_text(hjust = 0.5, size = 15))
+
+#Collaboration Task probability density plot + histogram
+ggplot(data = collab.task.fin, aes(x=FinCost)) + 
+  geom_histogram(aes( y = ..density..), fill = "red", bins = 15) +
+  geom_density() + 
+  labs(x = "Financial Cost in $Millions", y = "Probability Density") +
+  ggtitle("Financial Cost Distribution of Collaboration Task") +
+  theme_classic() + 
+  theme(plot.title = element_text(hjust = 0.5, size = 15))
+
+#CADS Task probability density plot + histogram
+ggplot(data = CADS.task.fin, aes(x=FinCost)) + 
+  geom_histogram(aes( y = ..density..), fill = "red", bins = 15) +
+  geom_density() + 
+  labs(x = "Financial Cost in $Millions", y = "Probability Density") +
+  ggtitle("Financial Cost Distribution of CADS Tasks") +
+  theme_classic() + 
+  theme(plot.title = element_text(hjust = 0.5, size = 15))
+
+#All three tasks probability density plot + histogram
+ggplot(data = regression.analysis.raw, aes(x = FinCost, color = Task)) +
+  geom_histogram(aes(y = ..density..), fill = "white", bins = 15) + 
+  geom_density()+ 
+  theme_classic() +
+  ggtitle("Financial Cost Distribution") +
+  labs(x = "Financial Cost in $Millions", y = "Probability Density") +
+  scale_color_manual(labels = c("Individual", "Collaboration", "CADS"), values = c(2, 3, 4)) +
+  theme(plot.title = element_text(hjust = 0.5, size = 15))
+
+#QQ plots for all three tasks
+ggplot(data = regression.analysis.raw, aes(sample = FinCost, color = Task)) + 
+  stat_qq() +
+  stat_qq_line() + theme_classic() +ggtitle("QQ Plot of Financial Cost") +
+  scale_color_manual(labels = c("Individual", "Collaboration", "CADS"), values = c(2, 3, 4)) +
+  labs(x = "Theoretical Quantiles", y = "Sample Financial Cost in $Million") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 15))
+
+#Environmental Task objective
+#Individual task histogram and probability density plot
+ggplot(data = individual.task.env, aes(x=EnvCost)) + 
+  geom_histogram(aes( y = ..density..), fill = "red", bins = 15) +
+  geom_density() + 
+  labs(x = "Environmental Cost in $Millions", y = "Probability Density") +
+  ggtitle("Environmental Cost Distribution of Individual Task") +
+  theme_classic() + 
+  theme(plot.title = element_text(hjust = 0.5, size = 15))
+
+#Collaboration task histogram and probability density plot
+ggplot(data = collab.task.env, aes(x=EnvCost)) + 
+  geom_histogram(aes( y = ..density..), fill = "red", bins = 15) +
+  geom_density() + 
+  labs(x = "Environmental Cost in $Millions", y = "Probability Density") +
+  ggtitle("Environmental Cost Distribution of Collaboration Task") +
+  theme_classic() + 
+  theme(plot.title = element_text(hjust = 0.5, size = 15))
+
+#CADS task histogram and probability density plot
+ggplot(data = CADS.task.env, aes(x=EnvCost)) + 
+  geom_histogram(aes( y = ..density..), fill = "red", bins = 15) +
+  geom_density() + 
+  labs(x = "Environmental Cost in $Millions", y = "Probability Density") +
+  ggtitle("Environmental Cost Distribution of CADS Tasks") +
+  theme_classic() + 
+  theme(plot.title = element_text(hjust = 0.5, size = 15))
+
+#All three tasks histogram and probability density plot
+ggplot(data = regression.analysis.raw, aes(x = EnvCost, color = Task)) +
+  geom_histogram(aes(y = ..density..), fill = "white", bins = 15) + 
+  geom_density()+ 
+  theme_classic() +
+  ggtitle("Environmental Cost Distribution") +
+  labs(x = "Environmental Cost in $Millions", y = "Probability Density") +
+  scale_color_manual(labels = c("Individual", "Collaboration", "CADS"), values = c(2, 3, 4)) +
+  theme(plot.title = element_text(hjust = 0.5, size = 15))
+
+#QQ plot for all three plots
+ggplot(data = regression.analysis.raw, aes(sample = EnvCost, color = Task)) + 
+  stat_qq() +
+  stat_qq_line()
+
+```
+
+
+## Log Transformation
+
+Due to the shapes of the overall distribution of all three tasks, we can perform a log transformation on the dependent variable to see if that has any effect on the overall distribution. This is especially appropriate since there is a minimum possible cost for each solution, limiting the shape of the distribution. After log transforming the cost outcomes for each group, we can see that the distribution appears nore normal.
+
+
+```{r logtransformation}
+
+#Transforming the outcome variables
+regression.analysis.raw.lognormal <- regression.analysis.raw%>%
+  mutate(lognormalFinCost = log(FinCost)) %>%
+  mutate(lognormalEnvCost = log(EnvCost))
+
+#Tranforming the task names
+mutated.regression.analysis <- regression.analysis.raw.lognormal%>%
+  mutate(Task1 = ifelse(Task == "aIndividualTask", "aIndividualTask", ifelse(Task == "bCollaborationTask" & OrderGrp == 1, "bCollaborationReversed", ifelse(Task == "bCollaborationTask" & OrderGrp == 0, "bCollaborationTask", ifelse(Task == "cCADSTask" & OrderGrp == 1, "cCADSReversed", "cCADSTask")))))
+
+#Transformed individual financial cost histogram and PDF
+ggplot(data = regression.analysis.raw.lognormal, aes(x = lognormalFinCost, color = Task)) +
+  geom_histogram(aes(y = ..density..), fill = "white", bins = 15) + 
+  geom_density()+ 
+  theme_classic() +
+  ggtitle("Financial Cost Distribution") +
+  labs(x = "Financial Cost in $Millions", y = "Probability Density") +
+  scale_color_manual(labels = c("Individual", "Collaboration", "CADS"), values = c(2, 3, 4)) +
+  theme(plot.title = element_text(hjust = 0.5, size = 15))
+
+#Transformed collaboration financial cost histogram and PDF
+ggplot(data = regression.analysis.raw.lognormal, aes(x = Task, y = lognormalFinCost)) +
+  geom_boxplot() + 
+  theme_classic() + 
+  labs(x = "Research Task", y = "Financial Cost in Million") +
+  ggtitle("Boxplot of Group Performance in Financial Cost")
+
+#Transformed CADS financial cost histogram and PDF
+ggplot(data = regression.analysis.raw.lognormal, aes(x = Task, y = lognormalFinCost)) +
+  geom_boxplot() + 
+  theme_classic() + 
+  labs(x = "Research Task", y = "Log Financial Cost in Million") +
+  ggtitle("Boxplot of Group Performance in Financial Cost") +
+  theme(plot.title = element_text(hjust = 0.5, size = 15))
+
+#Transformed QQ plot for all three tasks
+ggplot(data = regression.analysis.raw.lognormal, aes(sample = lognormalFinCost, color = Task)) + 
+  stat_qq() +
+  stat_qq_line() + theme_classic() +ggtitle("QQ Plot of Financial Cost") +
+  scale_color_manual(labels = c("Individual", "Collaboration", "CADS"), values = c(2, 3, 4)) +
+  labs(x = "Theoretical Quantiles", y = "Sample Log Financial Cost in $Million") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 15))
+
+#Environmental Cost histgram and PDF log transformed
+ggplot(data = regression.analysis.raw.lognormal, aes(x = lognormalEnvCost, color = Task)) +
+  geom_histogram(aes(y = ..density..), fill = "white", bins = 15) + 
+  geom_density()+ 
+  theme_classic() +
+  ggtitle("Environmental Cost Distribution") +
+  labs(x = "Environmental Cost in $Millions", y = "Probability Density") +
+  scale_color_manual(labels = c("Individual", "Collaboration", "CADS"), values = c(2, 3, 4)) +
+  theme(plot.title = element_text(hjust = 0.5, size = 15))
+
+#QQ plot transformed for all three tasks
+ggplot(data = regression.analysis.raw.lognormal, aes(sample = lognormalEnvCost, color = Task)) + 
+  stat_qq() +
+  stat_qq_line()
+
+```
+
+## Regression Analysis
+
+Due to the limited sample size, we could not include a large set of covariates in the regression models. The set of covariates we will add piecemeal will include the following: 
+
+Task: This specifies which task the participant group was on when they completed the task. This is the treatment variable of interest, and is a factor level variable.
+
+GradProp: This is a continuous variable of the proportion of the students in each group who are graduate students. This is used to understand the impact of having graduate students (who are generall older and have higher education) in a group than undergraduates. 
+
+Validation: This is a continuous variable of the group's average performance on the validation questions prior to the start of the study. This is used to measure the group's overall understanding of the problem prior to the different tasks.
+
+GroupOrder: This indicates whether the group completed the collaboration task first (value of 0) or the CADS task first (value of 1). This is a factor variable. 
+
+Finally, we will perform an interaction between the group order variable with the task variable, to measure any effect of the order on how participants performed in their task. 
+
+The set of regressions will include a simple regression of the objective variable (in this case financial cost) with first just the Task variable, then with GradProp and Validation added in. We then will include the GroupOrder variable and have it interact with the Task variable, then once again add it the covariates. 
+
+In addition, we will cluster the standard errors on a group-by-group basis, to be conservative in our estimation (since we believe there will be group correlation with each group's performance).
+
+Finally, we verified that there is low interclass correlation between the task, the group and the outcomes variables.
+
+```{r regression}
+#Non transformed regressions for financial cost
+#Simple financial regression
+model.simple.financial <- lm(FinCost ~ Task, data = regression.analysis.raw)
+
+#Simple regression with covariates
+model.simplecovar.financial <- lm(FinCost ~ Task + GradProp + Validation, data = regression.analysis.raw)
+
+#Regression with just order interaction
+model.interact.order.financial <- lm(data = regression.analysis.raw, FinCost ~ Task + factor(OrderGrp) + Task*factor(OrderGrp))
+
+#Regression with full covariates
+model.interact.covar.order.financial <- lm(data = regression.analysis.raw, FinCost ~ Task +  Task*factor(OrderGrp) + GradProp + Validation)
+
+#Transformed regressions for financial cost
+#Simple lognormal financial regression
+model.simple.financial.lognormal <- lm(lognormalFinCost ~ Task, data = regression.analysis.raw.lognormal)
+
+#Lognormal financial regression with simple covariates
+model.simplecovar.financial.lognormal <- lm(lognormalFinCost ~ Task + GradProp + Validation, data = regression.analysis.raw.lognormal)
+
+#Lognormal financial regression with group order effects
+model.interact.order.financial.lognormal <- lm(data = regression.analysis.raw.lognormal, lognormalFinCost ~ Task + factor(OrderGrp) + Task*factor(OrderGrp))
+
+#Lognormal financial regression with all covariates
+model.interact.covar.order.financial.lognormal <- lm(data = regression.analysis.raw.lognormal, lognormalFinCost ~ Task +  Task*factor(OrderGrp) + GradProp + Validation)
+
+#Env Regressions
+#Untransformed simple regression
+model.simple.financial.env <- lm(EnvCost ~ Task, data = regression.analysis.raw)
+
+#Untransformed regression with simple covariates
+model.simplecovar.financial.env <- lm(EnvCost ~ Task + GradProp + Validation, data = regression.analysis.raw)
+
+#Untransformed regression with group order effects
+model.interact.order.financial.env <- lm(data = regression.analysis.raw, EnvCost ~ Task + factor(OrderGrp) + Task*factor(OrderGrp))
+
+#Untransformed regression with all covariates
+model.interact.covar.order.financial.env <- lm(data = regression.analysis.raw, EnvCost ~ Task +  Task*factor(OrderGrp) + GradProp + Validation)
+
+#Lognormal simple regression
+model.simple.env.lognormal <- lm(data = regression.analysis.raw.lognormal, lognormalEnvCost ~ Task)
+
+#Lognormal regression with simple covriates
+model.simple.env.covar.lognormal <- lm(data = regression.analysis.raw.lognormal, lognormalEnvCost ~ Task + GradProp + Validation)
+
+#Lognormal regression with group order effects
+model.interact.env.lognormal <- lm(data = regression.analysis.raw.lognormal, lognormalEnvCost ~ Task + factor(OrderGrp) + Task*factor(OrderGrp))
+
+#Lognormal regression with all covariates
+model.interact.env.covar.lognormal <- lm(data = regression.analysis.raw.lognormal, lognormalEnvCost ~ Task + GradProp + Validation + factor(OrderGrp) + Task * factor(OrderGrp))
+
+#ICC checks
+ICCbare(Group, FinCost, data = regression.analysis.raw)
+
+ICCbare(Task, FinCost, data = regression.analysis.raw)
+
+ICCbare(Group, EnvCost, data = regression.analysis.raw)
+
+ICCbare(Task, EnvCost, data = regression.analysis.raw)
+
+```
+
+## Residual analysis
+
+We can then look at the residuals of each of the funtions to understand how good is the current set of regression models. We see that the residuals are approximately mean-zero, and the QQ-Plot of studentized residuals are approximately fitting the straight line, implying that the error terms are mean zero and are approximately normally distributed. This shows that our assumptions of the linear regression model holds, and we can be sure that the model specification is correct. 
+
+```{r residualAnalysis}
+
+qqPlot(model.simple.financial)
+# rstudent(model.simple.financial)
+plot(fitted(model.simple.financial), resid(model.simple.financial),
+     xlab = "Fitted Values",
+ylab = "Jackknife Residuals",
+pch = 19,
+col = rgb(0, 0, 0, .5))
+abline(h = 0)
+
+qqPlot(model.simplecovar.financial)
+# rstudent(model.simplecovar.financial)
+plot(fitted(model.simplecovar.financial), resid(model.simplecovar.financial),
+     xlab = "Fitted Values",
+ylab = "Jackknife Residuals",
+pch = 19,
+col = rgb(0, 0, 0, .5))
+abline(h = 0)
+
+qqPlot(model.interact.order.financial)
+# rstudent(model.interact.order.financial)
+
+plot(fitted(model.interact.order.financial), resid(model.interact.order.financial),
+     xlab = "Fitted Values",
+ylab = "Jackknife Residuals",
+pch = 19,
+col = rgb(0, 0, 0, .5))
+abline(h = 0)
+
+par(pty = "s")
+qqPlot(model.interact.covar.order.financial, ylab = "Studentized Residuals")
+#rstudent(model.interact.covar.order.financial)
+plot(fitted(model.interact.covar.order.financial), resid(model.interact.covar.order.financial),
+     xlab = "Fitted Values",
+ylab = "Jackknife Residuals",
+pch = 19,
+col = rgb(0, 0, 0, .5))
+abline(h = 0)
+
+
+qqPlot(model.simple.financial.lognormal)
+
+qqPlot(model.simplecovar.financial.lognormal)
+
+qqPlot(model.interact.order.financial.lognormal)
+plot(fitted(model.interact.order.financial.lognormal), resid(model.interact.order.financial.lognormal),
+     xlab = "Fitted Values",
+ylab = "Jackknife Residuals",
+pch = 19,
+col = rgb(0, 0, 0, .5))
+abline(h = 0)
+
+par(pty = "s")
+qqPlot(model.interact.covar.order.financial.lognormal, ylab = "Studentized Residuals")
+plot(fitted(model.interact.covar.order.financial.lognormal), resid(model.interact.covar.order.financial.lognormal),
+     xlab = "Fitted Values",
+ylab = "Jackknife Residuals",
+pch = 19,
+col = rgb(0, 0, 0, .5))
+abline(h = 0)
+
+par(pty = "s")
+qqPlot(model.interact.env.covar.lognormal, ylab = "Studentized Residuals")
+plot(fitted(model.interact.env.covar.lognormal), resid(model.interact.env.covar.lognormal),
+     xlab = "Fitted Values",
+ylab = "Jackknife Residuals",
+pch = 19,
+col = rgb(0, 0, 0, .5))
+abline(h = 0)
+
+par(pty = "s")
+qqPlot(model.interact.covar.order.financial.env, ylab = "Studentized Residuals")
+plot(fitted(model.interact.covar.order.financial.env), resid(model.interact.covar.order.financial.env),
+     xlab = "Fitted Values",
+ylab = "Jackknife Residuals",
+pch = 19,
+col = rgb(0, 0, 0, .5))
+abline(h = 0)
+
+#Conducting the Levene's Test
+leveneTest(lognormalFinCost ~ Task * Order, data = regression.analysis.raw.lognormal)
+
+leveneTest(lognormalEnvCost ~ Task * Order, data = regression.analysis.raw.lognormal)
+
+```
+However, there is some evidence of heteroskedasticity in the results. Running the Levene's Test on the interaction model shows that p value is 0.06, which is on the border of heteroskedasticity at 0.05 level. Therefore, it would prudent to use heteroskedastic robust standard errors for the models. 
+
+## Generating Regression Results
+
+We therefore reported the heteroskedastic and autocorrelation consistent estimation for standard errors. It is important to note that despite this conservative approach, our results are still robust at p<0.05 level. 
+
+```{r regressionResults}
+
+#Financial Cost
+se.simple.fin.log <- coeftest(model.simple.financial.lognormal, vcov = vcovHAC(model.simple.financial.lognormal))[,2]
+p.simple.fin.log <- coeftest(model.simple.financial.lognormal, vcov = vcovHAC(model.simple.financial.lognormal))[,4]
+  
+se.simplecovar.fin.log <- coeftest(model.simplecovar.financial.lognormal, vcov = vcovHAC(model.simplecovar.financial.lognormal))[,2]
+p.simplecovar.fin.log <- coeftest(model.simplecovar.financial.lognormal, vcov = vcovHAC(model.simplecovar.financial.lognormal))[,4]
+
+se.interact.fin.log <- coeftest(model.interact.order.financial.lognormal, vcov = vcovHAC(model.interact.order.financial.lognormal))[,2]
+p.interact.fin.log <- coeftest(model.interact.order.financial.lognormal, vcov = vcovHAC(model.interact.order.financial.lognormal))[,4]
+
+se.intercovar.fin.log <- coeftest(model.interact.covar.order.financial.lognormal, vcov = vcovHAC(model.interact.covar.order.financial.lognormal))[,2]
+p.intercovar.fin.log <- coeftest(model.interact.covar.order.financial.lognormal, vcov = vcovHAC(model.interact.covar.order.financial.lognormal))[,4]
+
+htmlreg(list(model.simple.financial.lognormal, model.simplecovar.financial.lognormal, model.interact.order.financial.lognormal, model.interact.covar.order.financial.lognormal), file = "logresults.html", custom.model.names = c("Regression", "Regression + Covars", "Order Interaction", "Order Interaction + Covars"), override.se = list(se.simple.fin.log, se.simplecovar.fin.log, se.interact.fin.log, se.intercovar.fin.log), override.pvalues = list(p.simple.fin.log, p.simplecovar.fin.log, p.interact.fin.log, p.intercovar.fin.log), custom.coef.map = list('(Intercept)' = 'Intercept', 'TaskbCollaborationTask' = 'Collaboration Task', 'TaskcCADSTask' = 'CADS Task', 'factor(OrderGrp)1' = 'Order Factor Variable', 'TaskbCollaborationTask:factor(OrderGrp)1' = 'Collaboration Task Third', 'TaskcCADSTask:factor(OrderGrp)1' = 'CADS Task Second', 'GradProp' = 'Graduate Students %', 'Validation' = 'Validation Score'), caption = "Regression of Log Normal Financial Cost Objective", caption.above = TRUE)
+
+#Environmental Cost
+se.simple.env.log <- coeftest(model.simple.env.lognormal, vcov = vcovHAC(model.simple.env.lognormal))[,2]
+p.simple.env.log <- coeftest(model.simple.env.lognormal, vcov = vcovHAC(model.simple.env.lognormal))[,4]
+  
+se.simplecovar.env.log <- coeftest(model.simple.env.covar.lognormal, vcov = vcovHAC(model.simple.env.covar.lognormal))[,2]
+p.simplecovar.env.log <- coeftest(model.simple.env.covar.lognormal, vcov = vcovHAC(model.simple.env.covar.lognormal))[,4]
+
+se.interact.env.log <- coeftest(model.interact.env.lognormal, vcov = vcovHAC(model.interact.env.lognormal))[,2]
+p.interact.env.log <- coeftest(model.interact.env.lognormal, vcov = vcovHAC(model.interact.env.lognormal))[,4]
+
+se.intercovar.env.log <- coeftest(model.interact.env.covar.lognormal, vcov = vcovHAC(model.interact.env.covar.lognormal))[,2]
+p.intercovar.env.log <- coeftest(model.interact.env.covar.lognormal, vcov = vcovHAC(model.interact.env.covar.lognormal))[,4]
+
+htmlreg(list(model.simple.env.lognormal, model.simple.env.covar.lognormal, model.interact.env.lognormal, model.interact.env.covar.lognormal), file = "Envresultslog.html", custom.model.names = c("Regression", "Regression + Covars", "Order Interaction", "Order Interaction + Covars"), override.se = list(se.simple.env.log, se.simplecovar.env.log, se.interact.env.log, se.intercovar.env.log), override.pvalues = list(p.simple.env.log, p.simplecovar.env.log, p.interact.env.log, p.intercovar.env.log), custom.coef.map = list('(Intercept)' = 'Intercept', 'TaskbCollaborationTask' = 'Collaboration Task', 'TaskcCADSTask' = 'CADS Task', 'factor(OrderGrp)1' = 'Order Factor Variable', 'TaskbCollaborationTask:factor(OrderGrp)1' = 'Collaboration Task Third', 'TaskcCADSTask:factor(OrderGrp)1' = 'CADS Task Second', 'GradProp' = 'Graduate Students %', 'Validation' = 'Validation Score'), caption = "Regression of Log Normal Environmental Cost Objective", caption.above = TRUE)
+
+#Generating figure of the effect sizes for each treatment group
+mutated.regression.analysis <- regression.analysis.raw.lognormal%>%
+  mutate(Task1 = ifelse(Task == "aIndividualTask", "aIndividualTask", ifelse(Task == "bCollaborationTask" & OrderGrp == 1, "bCollaborationReversed", ifelse(Task == "bCollaborationTask" & OrderGrp == 0, "bCollaborationTask", ifelse(Task == "cCADSTask" & OrderGrp == 1, "cCADSReversed", "cCADSTask")))))%>%
+  mutate(Task2 = ifelse(Task1 == "aIndividualTask", 1, ifelse(Task1 == "bCollaborationTask", 2, ifelse(Task1 == "bCollaborationReversed", 3, ifelse(Task1 == "cCADSTask", 5, 4)))))
+
+dis.x.label <- levels(mutated.regression.analysis$Task1)
+
+ggplot(data = mutated.regression.analysis, aes(x = Task2, y = FinCost, group = Task1)) +
+  geom_boxplot() + 
+  geom_dotplot(binaxis = 'y', stackdir = 'center', dotsize = 0.5) +
+  geom_jitter(position=position_jitter(0.05)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(5, 120), breaks = c(5, 30, 60, 90, 120), name = "Financial Cost in $M",  sec.axis = sec_axis(~log(.), name = "Log Financial Cost in $M", breaks = seq(2, 5, 0.5)))+
+  scale_x_continuous(expand = c(0, 0.6), breaks = 1:5, labels = c("Individual", "Collaboration 1", "Collaboration 2", "CADS 1", "CADS 2"), sec.axis = sec_axis(~.)) + 
+  ggtitle("A") + 
+  theme_classic() + theme(plot.title = element_text(size = 20, face = "bold"), 
+                          axis.text.x = element_text(size = 14, angle = 45, hjust = 1, family = "sans"), 
+                          axis.text.y = element_text(size = 14, family = "sans"), 
+                          axis.title.x = element_blank(),
+                          axis.title.y = element_text(size = 14, family = "sans"),
+                          axis.text.y.right = element_text(size = 14, family = "sans"),
+                          axis.text.x.top = element_blank(),
+                          axis.ticks.x.top = element_blank(),
+                          legend.title = element_text(size = 14, family = "sans"),
+                          legend.text = element_text(size = 14, family = "sans")) +
+  theme(aspect.ratio = 1)
+
+
+ggplot(data = mutated.regression.analysis, aes(x = Task2, y = EnvCost, group = Task1)) +
+  geom_boxplot() + 
+  geom_dotplot(binaxis = 'y', stackdir = 'center', dotsize = 0.5) +
+  geom_jitter(position=position_jitter(0.05)) +
+  scale_y_continuous(expand = c(0,0), limits = c(5, 60), breaks = c(5, 20,40, 60), name = "Environmental Cost in $M",  sec.axis = sec_axis(~log(.), name = "Log Env Cost in $M", breaks = seq(2, 4, 0.5)))+
+  scale_x_continuous(expand = c(0, 0.6), breaks = 1:5, labels = c("Individual", "Collaboration 1", "Collaboration 2", "CADS 1", "CADS 2"), sec.axis = sec_axis(~.)) + 
+  ggtitle("B") + 
+  theme_classic() + theme(plot.title = element_text(size = 20, face = "bold"), 
+                          axis.text.x = element_text(size = 14, angle = 45, hjust = 1, family = "sans"), 
+                          axis.text.y = element_text(size = 14, family = "sans"), 
+                          axis.title.x = element_blank(),
+                          axis.title.y = element_text(size = 14, family = "sans"),
+                          axis.text.y.right = element_text(size = 14, family = "sans"),
+                          axis.text.x.top = element_blank(),
+                          axis.ticks.x.top = element_blank(),
+                          legend.title = element_text(size = 14, family = "sans"),
+                          legend.text = element_text(size = 14, family = "sans")) +
+  theme(aspect.ratio = 1)
+
+ggplot(data = mutated.regression.analysis, aes(x = Task1, y = lognormalFinCost)) +
+  geom_boxplot() + 
+  geom_dotplot(binaxis = 'y', stackdir = 'center', dotsize = 0.5) +
+  geom_jitter(position=position_jitter(0.05)) +
+  theme_classic() + 
+  labs(y = "Log Financial Cost") +
+  scale_y_continuous(sec.axis = sec_axis(~./1))+
+  scale_x_discrete(limits = c("aIndividualTask", "bCollaborationTask", "bCollaborationReversed", "cCADSReversed", "cCADSTask"),labels=c("aIndividualTask" = "Individual", "bCollaborationTask" = "Collaboration 1", "bCollaborationReversed" = "Collaboration 2", "cCADSTask" = "CADS 2", "cCADSReversed" = "CADS 1")) + 
+  ggtitle("C: Financial Cost") + 
+  theme_classic() + theme(plot.title = element_text(hjust = 0.5, size = 20, face = "bold"), 
+                          axis.text.x = element_text(size = 14, angle = 45, hjust = 1, family = "sans"), 
+                          axis.text.y = element_text(size = 14, family = "sans"), 
+                          axis.title.x = element_blank(),
+                          axis.title.y = element_text(size = 14, family = "sans"),
+                          axis.text.y.right = element_blank(),
+                          axis.text.x.top = element_blank(),
+                          axis.ticks.x.top = element_blank(),
+                          axis.ticks.y.right = element_blank(),
+                          legend.title = element_text(size = 14, family = "sans"),
+                          legend.text = element_text(size = 14, family = "sans")) +
+  theme(aspect.ratio = 1)
+
+
+ggplot(data = mutated.regression.analysis, aes(x = Task1, y = lognormalEnvCost)) +
+  geom_boxplot() + 
+  geom_dotplot(binaxis = 'y', stackdir = 'center', dotsize = 0.5) +
+  geom_jitter(position=position_jitter(0.05)) +
+  theme_classic() + 
+  labs(y = "Log Environmental Cost") +
+  scale_y_continuous(sec.axis = sec_axis(~./1))+
+  scale_x_discrete(limits = c("aIndividualTask", "bCollaborationTask", "bCollaborationReversed", "cCADSReversed", "cCADSTask"),labels=c("aIndividualTask" = "Individual", "bCollaborationTask" = "Collaboration 1", "bCollaborationReversed" = "Collaboration 2", "cCADSTask" = "CADS 2", "cCADSReversed" = "CADS 1")) + 
+  ggtitle("D: Environmental Cost") + 
+  theme_classic() + theme(plot.title = element_text(hjust = 0.5, size = 20, face = "bold"), 
+                          axis.text.x = element_text(size = 14, angle = 45, hjust = 1, family = "sans"), 
+                          axis.text.y = element_text(size = 14, family = "sans"), 
+                          axis.title.x = element_blank(),
+                          axis.title.y = element_text(size = 14, family = "sans"),
+                          axis.text.y.right = element_blank(),
+                          axis.text.x.top = element_blank(),
+                          axis.ticks.x.top = element_blank(),
+                          axis.ticks.y.right = element_blank(),
+                          legend.title = element_text(size = 14, family = "sans"),
+                          legend.text = element_text(size = 14, family = "sans")) +
+  theme(aspect.ratio = 1)
+
+
+```
+
+## Sensitivity Analysis
+
+Due to the multi-objective nature of the problem, each group can have different weights for each objective. Certain groups might weigh financial cost more than environmental cost, and their design decisions would reflect that choice. To verify the robustness of the results with different objective weights, we applied relative weightings to the dependent variables, starting at 0% environmental cost, and varied it at a 5% interval until a weighting of 100% environmental cost. 
+
+The CADS task treatment coefficients showed a consistent progression from the financial objective model to the environmental objective model. In addition, the t-statistics show that, regardless of the objective weights, the CADSTask variable remained statistically significant. This shows that the model results are robust regardless of the relative weighting assigned to each objective. 
+
+```{r sensitivityAnalysis}
+regression.combined <- regression.analysis.raw.lognormal%>%
+  mutate(WeightedTotal = sqrt(FinCost^2+EnvCost^2)) %>%
+  mutate(WeightedTotalLognormal = log(WeightedTotal))%>%
+  mutate(weightedTotal010 = sqrt(0.9*FinCost^2 + 0.1*EnvCost^2))%>%
+  mutate(weightedTotal010Lognormal = log(weightedTotal010))%>%
+  mutate(weightedTotal005 = sqrt(0.95*FinCost^2 + 0.05*EnvCost^2))%>%
+  mutate(weightedTotal005Lognormal = log(weightedTotal005))%>%
+  mutate(weightedTotal015 = sqrt(0.85*FinCost^2 + 0.15*EnvCost^2))%>%
+  mutate(weightedTotal015Lognormal = log(weightedTotal015))%>%
+  mutate(weightedTotal020 = sqrt(0.8*FinCost^2 + 0.2*EnvCost^2))%>%
+  mutate(weightedTotal020Lognormal = log(weightedTotal020))%>%
+  mutate(weightedTotal025 = sqrt(0.75*FinCost^2 + 0.25*EnvCost^2))%>%
+  mutate(weightedTotal025Lognormal = log(weightedTotal025))%>%
+  mutate(weightedTotal030 = sqrt(0.7*FinCost^2 + 0.3*EnvCost^2))%>%
+  mutate(weightedTotal030Lognormal = log(weightedTotal030))%>%
+  mutate(weightedTotal035 = sqrt (0.65*FinCost^2 + 0.35*EnvCost^2))%>%
+  mutate(weightedTotal035Lognormal = log(weightedTotal035))%>%
+  mutate(weightedTotal040 = sqrt(0.6*FinCost^2 + 0.4*EnvCost^2))%>%
+  mutate(weightedTotal040Lognormal = log(weightedTotal040))%>%
+  mutate(weightedTotal045 = sqrt(0.55*FinCost^2 + 0.45*EnvCost^2))%>%
+  mutate(weightedTotal045Lognormal = log(weightedTotal045))%>%
+  mutate(weightedTotal050 = sqrt(0.5*FinCost^2 + 0.5*EnvCost^2))%>%
+  mutate(weightedTotal050Lognormal = log(weightedTotal050))%>%
+  mutate(weightedTotal055 = sqrt(0.45*FinCost^2 + 0.55*EnvCost^2))%>%
+  mutate(weightedTotal055Lognormal = log(weightedTotal055))%>%
+  mutate(weightedTotal060 = sqrt (0.4*FinCost^2 + 0.6*EnvCost^2))%>%
+  mutate(weightedTotal060Lognormal = log(weightedTotal060))%>%
+  mutate(weightedTotal065 = sqrt(0.35*FinCost^2 + 0.65*EnvCost^2))%>%
+  mutate(weightedTotal065Lognormal = log(weightedTotal065))%>%
+  mutate(weightedTotal070 = sqrt(0.3*FinCost^2 + 0.7*EnvCost^2))%>%
+  mutate(weightedTotal070Lognormal = log(weightedTotal070))%>%
+  mutate(weightedTotal075 = sqrt(0.25*FinCost^2 + 0.75*EnvCost^2))%>%
+  mutate(weightedTotal075Lognormal = log(weightedTotal075))%>%
+  mutate(weightedTotal080 = sqrt(0.2*FinCost^2 + 0.8*EnvCost^2))%>%
+  mutate(weightedTotal080Lognormal = log(weightedTotal080))%>%
+  mutate(weightedTotal085 = sqrt(0.15*FinCost^2 + 0.85*EnvCost^2))%>%
+  mutate(weightedTotal085Lognormal = log(weightedTotal085))%>%
+  mutate(weightedTotal090 = sqrt(0.1*FinCost^2 + 0.9*EnvCost^2))%>%
+  mutate(weightedTotal090Lognormal = log(weightedTotal090))%>%
+  mutate(weightedTotal095 = sqrt(0.05*FinCost^2 + 0.95*EnvCost^2))%>%
+  mutate(weightedTotal095Lognormal = log(weightedTotal095))
+
+model.combined <- lm(WeightedTotal ~ Task, data = regression.combined)
+summary(model.combined)
+
+model.combined.covar <- lm(WeightedTotal ~ Task + GradProp + Validation, data = regression.combined)
+summary(model.combined.covar)
+
+model.combined.interact <- lm(WeightedTotal ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.interact)
+
+model.combined.interact.lognormal <- lm(WeightedTotalLognormal ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.interact.lognormal)
+
+
+model.combined.weighted005.interact <- lm(weightedTotal005 ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted005.interact)
+
+model.combined.weighted005.interact.lognormal <- lm(weightedTotal005Lognormal ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted005.interact.lognormal)
+
+model.combined.weighted010.interact <- lm(weightedTotal010 ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted010.interact)
+
+model.combined.weighted010.interact.lognormal <- lm(weightedTotal010Lognormal ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted010.interact.lognormal)
+
+model.combined.weighted015.interact <- lm(weightedTotal015 ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted015.interact)
+
+model.combined.weighted015.interact.lognormal <- lm(weightedTotal015Lognormal ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted015.interact.lognormal)
+
+model.combined.weighted020.interact <- lm(weightedTotal020 ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted020.interact)
+
+model.combined.weighted020.interact.lognormal <- lm(weightedTotal020Lognormal ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted020.interact.lognormal)
+
+model.combined.weighted025.interact <- lm(weightedTotal025 ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted025.interact)
+
+model.combined.weighted025.interact.lognormal <- lm(weightedTotal025Lognormal ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted015.interact.lognormal)
+
+model.combined.weighted030.interact <- lm(weightedTotal030 ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted030.interact)
+
+model.combined.weighted030.interact.lognormal <- lm(weightedTotal030Lognormal ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted030.interact.lognormal)
+
+model.combined.weighted035.interact <- lm(weightedTotal035 ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted035.interact)
+
+model.combined.weighted035.interact.lognormal <- lm(weightedTotal035Lognormal ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted035.interact.lognormal)
+
+
+model.combined.weighted040.interact <- lm(weightedTotal040 ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted040.interact)
+
+model.combined.weighted040.interact.lognormal <- lm(weightedTotal040Lognormal ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted040.interact.lognormal)
+
+model.combined.weighted045.interact <- lm(weightedTotal045 ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted045.interact)
+
+model.combined.weighted045.interact.lognormal <- lm(weightedTotal045Lognormal ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted045.interact.lognormal)
+
+model.combined.weighted050.interact <- lm(weightedTotal050 ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted050.interact)
+
+model.combined.weighted055.interact <- lm(weightedTotal055 ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted055.interact)
+
+model.combined.weighted055.interact.lognormal <- lm(weightedTotal055Lognormal ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted055.interact.lognormal)
+
+model.combined.weighted060.interact <- lm(weightedTotal060 ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted060.interact)
+
+model.combined.weighted060.interact.lognormal <- lm(weightedTotal060Lognormal ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted060.interact.lognormal)
+
+model.combined.weighted065.interact <- lm(weightedTotal065 ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted065.interact)
+
+model.combined.weighted065.interact.lognormal <- lm(weightedTotal065Lognormal ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted065.interact.lognormal)
+
+model.combined.weighted070.interact <- lm(weightedTotal070 ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted070.interact)
+
+model.combined.weighted070.interact.lognormal <- lm(weightedTotal070Lognormal ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted070.interact.lognormal)
+
+model.combined.weighted075.interact <- lm(weightedTotal075 ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted075.interact)
+
+model.combined.weighted075.interact.lognormal <- lm(weightedTotal075Lognormal ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted075.interact.lognormal)
+
+model.combined.weighted080.interact <- lm(weightedTotal080 ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted080.interact)
+
+model.combined.weighted080.interact.lognormal <- lm(weightedTotal080Lognormal ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted080.interact.lognormal)
+
+model.combined.weighted085.interact <- lm(weightedTotal085 ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted085.interact)
+
+model.combined.weighted085.interact.lognormal <- lm(weightedTotal085Lognormal ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted085.interact.lognormal)
+
+model.combined.weighted090.interact <- lm(weightedTotal090 ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted090.interact)
+
+model.combined.weighted090.interact.lognormal <- lm(weightedTotal090Lognormal ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted090.interact.lognormal)
+
+model.combined.weighted095.interact <- lm(weightedTotal095 ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted095.interact)
+
+model.combined.weighted095.interact.lognormal <- lm(weightedTotal095Lognormal ~ Task + GradProp + Validation + factor(OrderGrp) + factor(OrderGrp) *Task, data = regression.combined)
+summary(model.combined.weighted095.interact.lognormal)
+
+# Coef Extraction
+
+TaskCoefficients <- c()
+
+TaskCoefficients <- c(as.list(coef(model.interact.covar.order.financial))[3],as.list(coef(model.combined.weighted005.interact))[3], as.list(coef(model.combined.weighted010.interact))[3], as.list(coef(model.combined.weighted015.interact))[3], as.list(coef(model.combined.weighted020.interact))[3], as.list(coef(model.combined.weighted025.interact))[3], as.list(coef(model.combined.weighted030.interact))[3], as.list(coef(model.combined.weighted035.interact))[3], as.list(coef(model.combined.weighted040.interact))[3], as.list(coef(model.combined.weighted045.interact))[3], as.list(coef(model.combined.weighted050.interact))[3], as.list(coef(model.combined.weighted055.interact))[3], as.list(coef(model.combined.weighted060.interact))[3], as.list(coef(model.combined.weighted065.interact))[3], as.list(coef(model.combined.weighted070.interact))[3], as.list(coef(model.combined.weighted075.interact))[3], as.list(coef(model.combined.weighted080.interact))[3], as.list(coef(model.combined.weighted085.interact))[3], as.list(coef(model.combined.weighted090.interact))[3], as.list(coef(model.combined.weighted095.interact))[3], as.list(coef(model.interact.order.financial.env))[3])
+
+pValues.raw <- c(summary((model.interact.covar.order.financial))$coefficients[3,3], as.list(summary(model.combined.weighted005.interact))$coefficients[3,3], as.list(summary(model.combined.weighted010.interact))$coefficients[3,3], as.list(summary(model.combined.weighted015.interact))$coefficients[3,3], as.list(summary(model.combined.weighted020.interact))$coefficients[3,3], as.list(summary(model.combined.weighted025.interact))$coefficients[3,3], as.list(summary(model.combined.weighted030.interact))$coefficients[3,3], as.list(summary(model.combined.weighted035.interact))$coefficients[3,3], as.list(summary(model.combined.weighted040.interact))$coefficients[3,3], as.list(summary(model.combined.weighted045.interact))$coefficients[3,3], as.list(summary(model.combined.weighted050.interact))$coefficients[3,3], as.list(summary(model.combined.weighted055.interact))$coefficients[3,3], as.list(summary(model.combined.weighted060.interact))$coefficients[3,3], as.list(summary(model.combined.weighted065.interact))$coefficients[3,3], as.list(summary(model.combined.weighted070.interact))$coefficients[3,3], as.list(summary(model.combined.weighted075.interact))$coefficients[3,3], as.list(summary(model.combined.weighted080.interact))$coefficients[3,3], as.list(summary(model.combined.weighted085.interact))$coefficients[3,3], as.list(summary(model.combined.weighted090.interact))$coefficients[3,3], as.list(summary(model.combined.weighted095.interact))$coefficients[3,3], as.list(summary(model.interact.order.financial.env))$coefficients[3,3])
+
+
+lognormalTaskCoefficients <- c(as.list(coef(model.interact.covar.order.financial.lognormal))[3],as.list(coef(model.combined.weighted005.interact.lognormal))[3], as.list(coef(model.combined.weighted010.interact.lognormal))[3], as.list(coef(model.combined.weighted015.interact.lognormal))[3], as.list(coef(model.combined.weighted020.interact.lognormal))[3], as.list(coef(model.combined.weighted025.interact.lognormal))[3], as.list(coef(model.combined.weighted030.interact.lognormal))[3], as.list(coef(model.combined.weighted035.interact.lognormal))[3], as.list(coef(model.combined.weighted040.interact.lognormal))[3], as.list(coef(model.combined.weighted045.interact.lognormal))[3], as.list(coef(model.combined.interact.lognormal))[3], as.list(coef(model.combined.weighted055.interact.lognormal))[3], as.list(coef(model.combined.weighted060.interact.lognormal))[3], as.list(coef(model.combined.weighted065.interact.lognormal))[3], as.list(coef(model.combined.weighted070.interact.lognormal))[3], as.list(coef(model.combined.weighted075.interact.lognormal))[3], as.list(coef(model.combined.weighted080.interact.lognormal))[3], as.list(coef(model.combined.weighted085.interact.lognormal))[3], as.list(coef(model.combined.weighted090.interact.lognormal))[3], as.list(coef(model.combined.weighted095.interact.lognormal))[3], as.list(coef(model.interact.env.covar.lognormal))[3])
+
+pValues.lognormal <- c(summary((model.interact.covar.order.financial.lognormal))$coefficients[3,3], as.list(summary(model.combined.weighted005.interact.lognormal))$coefficients[3,3], as.list(summary(model.combined.weighted010.interact.lognormal))$coefficients[3,3], as.list(summary(model.combined.weighted015.interact.lognormal))$coefficients[3,3], as.list(summary(model.combined.weighted020.interact.lognormal))$coefficients[3,3], as.list(summary(model.combined.weighted025.interact.lognormal))$coefficients[3,3], as.list(summary(model.combined.weighted030.interact.lognormal))$coefficients[3,3], as.list(summary(model.combined.weighted035.interact.lognormal))$coefficients[3,3], as.list(summary(model.combined.weighted040.interact.lognormal))$coefficients[3,3], as.list(summary(model.combined.weighted045.interact.lognormal))$coefficients[3,3], as.list(summary(model.combined.interact.lognormal))$coefficients[3,3], as.list(summary(model.combined.weighted055.interact.lognormal))$coefficients[3,3], as.list(summary(model.combined.weighted060.interact.lognormal))$coefficients[3,3], as.list(summary(model.combined.weighted065.interact.lognormal))$coefficients[3,3], as.list(summary(model.combined.weighted070.interact.lognormal))$coefficients[3,3], as.list(summary(model.combined.weighted075.interact.lognormal))$coefficients[3,3], as.list(summary(model.combined.weighted080.interact.lognormal))$coefficients[3,3], as.list(summary(model.combined.weighted085.interact.lognormal))$coefficients[3,3], as.list(summary(model.combined.weighted090.interact.lognormal))$coefficients[3,3], as.list(summary(model.combined.weighted095.interact.lognormal))$coefficients[3,3], as.list(summary(model.interact.env.covar.lognormal))$coefficients[3,3])
+
+weighting <- c(seq(from = 0, to = 1, by = 0.05))
+
+robustWeighting <- as.data.frame(cbind(weighting, TaskCoefficients, lognormalTaskCoefficients, pValues.raw, pValues.lognormal))
+
+
+
+ggplot() +
+  geom_point(data = robustWeighting, aes(x = as.numeric(weighting), y = as.numeric(TaskCoefficients))) + labs(x = "Relative Weight of Environmental Objective", y = "CADS Coefficient") +
+    theme_classic() + 
+  scale_y_continuous(sec.axis = sec_axis(~./1)) +
+  scale_x_continuous(sec.axis = sec_axis(~./1))+
+  ggtitle("A") +
+  theme(plot.title = element_text(hjust = 0.5, size = 20, face = "bold"), 
+                          axis.text.x = element_text(size = 14, family = "sans"), 
+                          axis.text.y = element_text(size = 14, family = "sans"), 
+                          axis.title.x = element_text(size = 14, family = "sans"),
+                          axis.title.y = element_text(size = 14, family = "sans"),
+                          axis.text.y.right = element_blank(),
+                          axis.text.x.top = element_blank(),
+                          axis.ticks.x.top = element_blank(),
+                          axis.ticks.y.right = element_blank(),
+                          legend.title = element_text(size = 14, family = "sans"),
+                          legend.text = element_text(size = 14, family = "sans")) +
+  theme(aspect.ratio = 1)
+
+ggplot() +
+  geom_point(data = robustWeighting, aes(x = as.numeric(weighting), y = as.numeric(lognormalTaskCoefficients))) + 
+  labs(x = "Relative Weight of Environmental Objective", y = "Log Transformed CADS Coefficient") +
+  theme_classic() + 
+  scale_y_continuous(sec.axis = sec_axis(~./1)) +
+  scale_x_continuous(sec.axis = sec_axis(~./1))+
+  ggtitle("B") +
+  theme(plot.title = element_text(hjust = 0.5, size = 20, face = "bold"), 
+                          axis.text.x = element_text(size = 14, family = "sans"), 
+                          axis.text.y = element_text(size = 14, family = "sans"), 
+                          axis.title.x = element_text(size = 14, family = "sans"),
+                          axis.title.y = element_text(size = 14, family = "sans"),
+                          axis.text.y.right = element_blank(),
+                          axis.text.x.top = element_blank(),
+                          axis.ticks.x.top = element_blank(),
+                          axis.ticks.y.right = element_blank(),
+                          legend.title = element_text(size = 14, family = "sans"),
+                          legend.text = element_text(size = 14, family = "sans")) +
+  theme(aspect.ratio = 1)
+
+ggplot() +
+  geom_point(data = robustWeighting, aes(x = as.numeric(weighting), y = as.numeric(pValues.raw))) + 
+  labs(x = "Relative Weight of Environmental Objective", y = "CADS Treatment T-Statistic") + 
+  theme_classic() + 
+  scale_y_continuous(sec.axis = sec_axis(~./1)) +
+  scale_x_continuous(sec.axis = sec_axis(~./1))+
+  ggtitle("C") +
+  theme(plot.title = element_text(hjust = 0.5, size = 20, face = "bold"), 
+                          axis.text.x = element_text(size = 14, family = "sans"), 
+                          axis.text.y = element_text(size = 14, family = "sans"), 
+                          axis.title.x = element_text(size = 14, family = "sans"),
+                          axis.title.y = element_text(size = 14, family = "sans"),
+                          axis.text.y.right = element_blank(),
+                          axis.text.x.top = element_blank(),
+                          axis.ticks.x.top = element_blank(),
+                          axis.ticks.y.right = element_blank(),
+                          legend.title = element_text(size = 14, family = "sans"),
+                          legend.text = element_text(size = 14, family = "sans")) +
+  theme(aspect.ratio = 1)
+
+ggplot() +
+  geom_point(data = robustWeighting, aes(x = as.numeric(weighting), y = as.numeric(pValues.lognormal))) + 
+  labs(x = "Relative Weight of Environmental Objective", y = "Log CADS Treatment T-Statistic") + 
+  theme_classic() + 
+  scale_y_continuous(sec.axis = sec_axis(~./1)) +
+  scale_x_continuous(sec.axis = sec_axis(~./1))+
+  ggtitle("") +
+  theme(plot.title = element_text(hjust = 0.5, size = 20, face = "bold"), 
+                          axis.text.x = element_text(size = 14, family = "sans"), 
+                          axis.text.y = element_text(size = 14, family = "sans"), 
+                          axis.title.x = element_text(size = 14, family = "sans"),
+                          axis.title.y = element_text(size = 14, family = "sans"),
+                          axis.text.y.right = element_blank(),
+                          axis.text.x.top = element_blank(),
+                          axis.ticks.x.top = element_blank(),
+                          axis.ticks.y.right = element_blank(),
+                          legend.title = element_text(size = 14, family = "sans"),
+                          legend.text = element_text(size = 14, family = "sans")) +
+  theme(aspect.ratio = 1)
+```
+

@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1536931738472.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "1104937003",
+    "id" : "6BD5A666",
+    "lastKnownWriteTime" : 1536861567,
+    "last_content_update" : 1536861567,
+    "path" : "~/Documents/CADS/CADSProject/Code/R/ShinyApp/CADS_Dashboard/app.R",
+    "project_path" : null,
+    "properties" : {
+        "cursorPosition" : "471,0",
+        "scrollLine" : "0"
+    },
+    "relative_order" : 2,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1536874352834.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "728327548",
+    "id" : "B2E1731F",
+    "lastKnownWriteTime" : 1536874410,
+    "last_content_update" : 1536874410740,
+    "path" : "~/Documents/CADS/CADSProject/Code/FreshwaterSession2/app.R",
+    "project_path" : "app.R",
+    "properties" : {
+        "cursorPosition" : "356,67",
+        "scrollLine" : "341"
+    },
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

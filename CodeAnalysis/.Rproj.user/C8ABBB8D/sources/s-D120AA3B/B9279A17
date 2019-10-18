@@ -1,0 +1,23 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1571324687963.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "B9279A17",
+    "lastKnownWriteTime" : 1571424628,
+    "last_content_update" : 1571424629007,
+    "path" : "~/CADS/CADS/CodeAnalysis/MainResults.Rmd",
+    "project_path" : "MainResults.Rmd",
+    "properties" : {
+        "cursorPosition" : "879,20",
+        "scrollLine" : "870",
+        "tempName" : "Untitled1"
+    },
+    "relative_order" : 2,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_markdown"
+}

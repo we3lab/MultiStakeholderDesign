@@ -1,0 +1,12 @@
+name: EnvSession2
+title: EnvSession2
+username:
+account: nilesxug
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 442880
+bundleId: 1584614
+url: https://nilesxug.shinyapps.io/EnvSession2/
+when: 1536875894.35116
+asMultiple: FALSE
+asStatic: FALSE
