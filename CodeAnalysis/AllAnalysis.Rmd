@@ -867,6 +867,24 @@ model.interact.env.lognormal <- lm(data = regression.analysis.raw.lognormal, log
 #Lognormal regression with all covariates
 model.interact.env.covar.lognormal <- lm(data = regression.analysis.raw.lognormal, lognormalEnvCost ~ Task + GradProp + Validation + factor(OrderGrp) + Task * factor(OrderGrp))
 
+#Changing Coefficient order
+
+regression.analysis.raw.lognormal$Task <- factor(regression.analysis.raw.lognormal$Task, levels = c("bCollaborationTask", "cCADSTask", "aIndividualTask"))
+
+#Lognormal financial regression with all covariates
+model.interact.covar.order.financial.lognormal <- lm(data = regression.analysis.raw.lognormal, lognormalFinCost ~ Task +  Task*factor(OrderGrp) + GradProp + Validation)
+
+model.interact.env.covar.lognormal <- lm(data = regression.analysis.raw.lognormal, lognormalEnvCost ~ Task + GradProp + Validation + factor(OrderGrp) + Task * factor(OrderGrp))
+
+#Change back level order for table generation
+regression.analysis.raw.lognormal$Task <- factor(regression.analysis.raw.lognormal$Task, levels = c("aIndividualTask", "bCollaborationTask", "cCADSTask"))
+
+#Lognormal financial regression with all covariates
+model.interact.covar.order.financial.lognormal <- lm(data = regression.analysis.raw.lognormal, lognormalFinCost ~ Task +  Task*factor(OrderGrp) + GradProp + Validation)
+
+model.interact.env.covar.lognormal <- lm(data = regression.analysis.raw.lognormal, lognormalEnvCost ~ Task + GradProp + Validation + factor(OrderGrp) + Task * factor(OrderGrp))
+
+
 #ICC checks
 ICCbare(Group, FinCost, data = regression.analysis.raw)
 

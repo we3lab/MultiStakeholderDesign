@@ -11,19 +11,11 @@ knitr::opts_chunk$set(echo = FALSE)
 library(googlesheets)
 library(rlang)
 library(curl)
-library(openssl)
 library(hms)
 library(Rmisc)
 library(dplyr)
-library(shiny)
-library(shinydashboard)
 library(tables)
 library(tidyr)
-library(highcharter)
-library(httr)
-library(leaflet)
-library(jsonlite)
-library(leaflet)
 library(googledrive)
 library(DT)
 library(rPref)
@@ -32,18 +24,13 @@ library(lme4)
 library(multiwayvcov)
 library(miceadds)
 library(stargazer)
-library(ICC)
-library(effsize)
-library(pwr)
 library(xtable)
 library(car)
 library(texreg)
-library(TrialSize)
 library(ggforce)
 library(PowerTOST)
 library(sandwich)
 library(lmtest)
-library(wesanderson)
 library(BayesFactor)
 
 ```
@@ -83,6 +70,7 @@ regression.analysis.raw <- results.full%>%
   mutate(Order = as.factor(OrderGrp))
 
 #Pareto solutions were generated through a system simulation of all possible design decisions. The solutions 
+
 #Pulling in the solutions on the Pareto Frontier, also generated the non-inferiority interval 
 df2 <- read.csv("paretofrontier.csv")%>%
   select("FinancialCost", "EnvironmentalCost")%>%
@@ -449,70 +437,6 @@ t.value.CADS2 <- (mean(euc.bound.CADS2) - mean(bound.distance1))/sd(euc.bound.CA
 
 ```
 
-## Treatment Effect Sizes (Cohen's d)
-
-However, due to the limited number of groups we were able to observe, it is worth to understand whether this sample size would limit either the statistical power of analysis, or potential measurement of the actual treatment effects. We can measure this by first finding the effect size of the treatment (Participants using CADS) on our benchmark case (individual design task), and then conduct a power analysis using the measured effect size.
-
-Using Cohen's D as the measurement of effect size, we can see that the collaboration task's cohen's d is approximately 0.70, and the CADS Task's cohen's d is approximately 1.48 (which signifies a large effect size). However, it is important to note that the 95% CI of the effect size is large, with the CADS task ranging from 0.79 to 2.17. 
-
-The power analysis of the CADS Task's Cohen's D shows that at 0.005 significance level, the power of the test is 0.9997 with a sample size of 22. The Wilcoxon also shows that between individual task and CADS task at significance level < 0.001, the mean financial costs are not the same. This is also true between collaboration task and CADS task at significance level < 0.001. 
-
-The effect size of the environmental objective is lower than the financial cost. However, the effect size is still measured as large, with a mean value of 0.99. Using this as the effect size for the power test, the statistical power of the sample size is still sufficient (sig level of 0.05 and power of essentially 0.95).  
-
-Conducting the Wilcoxon test on both the mean of the CADS task against the individual task and the CADS task against the collaboration task show that the the means are not the same with significance level at 0.005. This shows that the effect size is significant.
-
-```{r effectSizes}
-#Measuring Treatment effect sizes: Financial Cost objective
-
-cohen.d.individual.collaboration <- regression.analysis.raw%>%
-  filter(IndiTask == 1 | CollabTask == 1)%>%
-  select(Group, Task, FinCost)
-
-#Collaboration Treatment size for Financial Cost
-collaboration.effect.size <- cohen.d(data = cohen.d.individual.collaboration, FinCost ~ Task, paired = TRUE)
-
-#Conducting the wilcox test
-wilcox.test(FinCost ~ Task, data = cohen.d.individual.collaboration, paired = TRUE)
-
-#CADS treatment size for financial cost
-cohen.d.individual.CADS <- regression.analysis.raw%>%
-  filter(IndiTask == 1 | CADSTask == 1)%>%
-  select(Group, Task, FinCost)
-
-cads.effect.size <-  cohen.d(data = cohen.d.individual.CADS, FinCost ~ Task, paired = TRUE)
-
-#Conducting the wilcox test
-wilcox.test(FinCost ~ Task, data = cohen.d.individual.CADS, paired = TRUE)
-
-#Treatment effect size with CADS against collaboration
-cohen.d.collaboration.CADS <- regression.analysis.raw%>%
-  filter(CADSTask == 1 | CollabTask == 1)%>%
-  select(Group, Task, FinCost)
-
-cads.effect.size.collaboration <-  cohen.d(data = cohen.d.collaboration.CADS, FinCost ~ Task, paired = TRUE)
-
-#Conducting the wilcox test
-wilcox.test(FinCost ~ Task, data = cohen.d.collaboration.CADS)
-
-#Conducting the same treatment effect size estimation for environmental cost
-cohen.d.individual.collaboration.env <- regression.analysis.raw%>%
-  filter(IndiTask == 1 | CollabTask == 1)%>%
-  select(Group, Task, EnvCost)
-
-collaboration.effect.size.env <- cohen.d(data = cohen.d.individual.collaboration.env, EnvCost ~ Task, paired = TRUE)
-
-cohen.d.individual.CADS.env <- regression.analysis.raw%>%
-  filter(IndiTask == 1 | CADSTask == 1)%>%
-  select(Group, Task, EnvCost)
-
-cads.effect.size.env <-  cohen.d(data = cohen.d.individual.CADS.env, EnvCost ~ Task, paired = TRUE)
-
-pwr.t.test(n = 22, d = 0.99, sig.level = 0.01, type = "paired")
-
-wilcox.test(EnvCost ~ Task, data = cohen.d.individual.CADS.env)
-wilcox.test(EnvCost ~ Task, data = cohen.d.individual.collaboration.env)
-
-```
 
 Due to the limited sample size, we could not include a large set of covariates in the regression models. The set of covariates we will add piecemeal will include the following: 
 
@@ -530,7 +454,6 @@ The set of regressions will include a simple regression of the objective variabl
 
 In addition, we will cluster the standard errors on a group-by-group basis, to be conservative in our estimation (since we believe there will be group correlation with each group's performance).
 
-Finally, we verified that there is low interclass correlation between the task, the group and the outcomes variables.
 
 ```{r regression}
 
@@ -543,19 +466,6 @@ regression.analysis.raw.lognormal <- regression.analysis.raw%>%
 mutated.regression.analysis <- regression.analysis.raw.lognormal%>%
   mutate(Task1 = ifelse(Task == "aIndividualTask", "aIndividualTask", ifelse(Task == "bCollaborationTask" & OrderGrp == 1, "bCollaborationReversed", ifelse(Task == "bCollaborationTask" & OrderGrp == 0, "bCollaborationTask", ifelse(Task == "cCADSTask" & OrderGrp == 1, "cCADSReversed", "cCADSTask")))))
 
-
-#Non transformed regressions for financial cost
-#Simple financial regression
-model.simple.financial <- lm(FinCost ~ Task, data = regression.analysis.raw)
-
-#Simple regression with covariates
-model.simplecovar.financial <- lm(FinCost ~ Task + GradProp + Validation, data = regression.analysis.raw)
-
-#Regression with just order interaction
-model.interact.order.financial <- lm(data = regression.analysis.raw, FinCost ~ Task + factor(OrderGrp) + Task*factor(OrderGrp))
-
-#Regression with full covariates
-model.interact.covar.order.financial <- lm(data = regression.analysis.raw, FinCost ~ Task +  Task*factor(OrderGrp) + GradProp + Validation)
 
 #Transformed regressions for financial cost
 #Simple lognormal financial regression
@@ -571,18 +481,6 @@ model.interact.order.financial.lognormal <- lm(data = regression.analysis.raw.lo
 model.interact.covar.order.financial.lognormal <- lm(data = regression.analysis.raw.lognormal, lognormalFinCost ~ Task +  Task*factor(OrderGrp) + GradProp + Validation)
 
 #Env Regressions
-#Untransformed simple regression
-model.simple.financial.env <- lm(EnvCost ~ Task, data = regression.analysis.raw)
-
-#Untransformed regression with simple covariates
-model.simplecovar.financial.env <- lm(EnvCost ~ Task + GradProp + Validation, data = regression.analysis.raw)
-
-#Untransformed regression with group order effects
-model.interact.order.financial.env <- lm(data = regression.analysis.raw, EnvCost ~ Task + factor(OrderGrp) + Task*factor(OrderGrp))
-
-#Untransformed regression with all covariates
-model.interact.covar.order.financial.env <- lm(data = regression.analysis.raw, EnvCost ~ Task +  Task*factor(OrderGrp) + GradProp + Validation)
-
 #Lognormal simple regression
 model.simple.env.lognormal <- lm(data = regression.analysis.raw.lognormal, lognormalEnvCost ~ Task)
 
@@ -639,7 +537,7 @@ mutated.regression.analysis <- regression.analysis.raw.lognormal%>%
 
 dis.x.label <- levels(mutated.regression.analysis$Task1)
 
-#Generated Figure 3 of paper
+#Generate Figure 3
 ggplot(data = mutated.regression.analysis, aes(x = Task2, y = FinCost, group = Task1)) +
   geom_boxplot() + 
   geom_dotplot(binaxis = 'y', stackdir = 'center', dotsize = 0.5) +
