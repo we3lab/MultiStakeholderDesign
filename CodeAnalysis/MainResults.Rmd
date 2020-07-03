@@ -9,29 +9,18 @@ output: pdf_document
 knitr::opts_chunk$set(echo = FALSE)
 
 library(googlesheets)
-library(rlang)
-library(curl)
-library(hms)
 library(Rmisc)
 library(dplyr)
 library(tables)
 library(tidyr)
 library(googledrive)
-library(DT)
-library(rPref)
 library(ggalt)
 library(lme4)
-library(multiwayvcov)
-library(miceadds)
-library(stargazer)
-library(xtable)
 library(car)
 library(texreg)
 library(ggforce)
-library(PowerTOST)
 library(sandwich)
 library(lmtest)
-library(BayesFactor)
 
 ```
 
@@ -86,126 +75,6 @@ mutated.regression.analysis <- regression.analysis.raw%>%
                         ifelse(Task == "bCollaborationTask" & OrderGrp == 1, "bCollaborationReversed", 
                                ifelse(Task == "bCollaborationTask" & OrderGrp == 0, "bCollaborationTask", 
                                       ifelse(Task == "cCADSTask" & OrderGrp == 1, "cCADSReversed", "cCADSTask")))))
-
-
-```
-
-## Plotting H1 Results
-
-The first hypothesis stated that participants using CADS will generate solutions no worse than 20% of a solution in the Pareto set. To test this hypothesis, we first identified the solutions in the pareto set. We then generated the 20% bound by creating a circle with a radius that is 20% of the euclidean cost of each pareto solution. Qualitatively, we then overalay the set of outcomes that each group generated using CADS on top of the circles. As we can see, all but 1 group generated a solution using CADS within the 20% radius of the pareto solutions.
-
-We can also conduct an one-sample non-inferiority test to test this hypothesis, where:
-
-$$H_{o}: \mu_{T} \geq \mu_{R} + M_{NI}$$ 
-and:
-
-$$H_{a}: \mu_{T} < \mu_{R} + M_{NI}$$ 
-where: 
-$\mu_{T}$ represents the sample mean, here representing the euclidean distance of the outcomes generated using CADS to their closest pareto solution,
-$\mu_{R}$ represents the reference mean, which is zero, 
-$M_{NI}$ represents the margin of non-inferiority, which is the mean of 20% radius for each of the pareto solutions.  
-
-If the null hypothesis can be rejected using an one-tail t-test, it would mean that the average distance of the CADS outcomes from their closest pareto solution is less than the non-inferiority margin. The t-value is calculated to be -1.81, which correspond to a p-value of < 0.05 at df 21. This shows we can reject the null hypothesis with a significance level of 0.05, showing the non-inferiority of CADS outcomes when compared against the pareto solutions. 
-
-The code chunk below generates the four panels of Figure 2 in the paper. 
-
-```{r nonInferiorityPlot, echo=FALSE}
-
-# Individual Designs and Pareto Margin
-ggplot() +
-  coord_fixed() +
-  geom_arc_bar(aes(x0 = y, y0 = x, r0 =0, r = radius, start = 0, end = pi/2), data = df2, color = "gray88", fill = "gray88")+
-  geom_point(aes(x = y, y = x), data = df2, color = "black") +
-  geom_point(data = individual.task, aes(x = FinCost, y = EnvCost), color = "red2") +
-  stat_ellipse(data = individual.task, aes(x = FinCost, y = EnvCost), type = "norm", color = "red2", linetype = 2) +
-  labs(y = "Environmental Cost in $M", x = "Financial Cost in $M") + 
-  ggtitle("A") + 
-  scale_y_continuous(expand = c(0, 0), limits = c(0, 60), sec.axis = sec_axis(~./1), breaks = c(0, 20, 40, 60))+
-  scale_x_continuous(expand = c(0, 0), limits = c(0, 110), sec.axis = sec_axis(~./1), breaks = c(0, 20, 40, 60, 80, 100)) +
-  theme_classic() + theme(plot.title = element_text(size = 24, face = "bold"), 
-                          axis.text.x = element_text(size = 18, family = "sans"), 
-                          axis.text.y = element_text(size = 18, family = "sans"), 
-                          axis.title.x = element_text(size = 18, family = "sans"),
-                          axis.title.y = element_text(size = 18, family = "sans"),
-                          axis.text.y.right = element_blank(),
-                          axis.text.x.top = element_blank(),
-                          axis.ticks.x.top = element_blank(),
-                          axis.ticks.y.right = element_blank(),
-                          legend.title = element_text(size = 18, family = "sans"),
-                          legend.text = element_text(size = 18, family = "sans")) +
-  theme(aspect.ratio = 1)
-
-# CADS Designs and Pareto Margin
-ggplot() +
-  coord_fixed() +
-  geom_arc_bar(aes(x0 = y, y0 = x, r0 = 0, r = radius, start = 0, end = pi/2), data = df2, color = "gray88", fill = "gray88")+
-  geom_point(aes(x = y, y = x), data = df2, color = "black") +
-  geom_point(data = CADS.task, aes(x = FinCost, y = EnvCost), color = "red2") +
-  stat_ellipse(data = CADS.task, aes(x = FinCost, y = EnvCost), type = "norm", color = "red2", linetype = 2) +
-  labs(y = "Environmental Cost in $M", x = "Financial Cost in $M") + 
-  ggtitle("B") + 
-  scale_y_continuous(expand = c(0,0), limits = c(0, 60), sec.axis = sec_axis(~./1), breaks = c(0, 20, 40, 60))+
-  scale_x_continuous(expand = c(0,0), limits = c(0, 110), sec.axis = sec_axis(~./1), breaks = c(0, 20, 40, 60, 80, 100)) +
-  theme_classic() + theme(plot.title = element_text(size = 24, face = "bold"), 
-                          axis.text.x = element_text(size = 18, family = "sans"), 
-                          axis.text.y = element_text(size = 18, family = "sans"), 
-                          axis.title.x = element_text(size = 18, family = "sans"),
-                          axis.title.y = element_text(size = 18, family = "sans"),
-                          axis.text.y.right = element_blank(),
-                          axis.text.x.top = element_blank(),
-                          axis.ticks.x.top = element_blank(),
-                          axis.ticks.y.right = element_blank(),
-                          legend.title = element_text(size = 18, family = "sans"),
-                          legend.text = element_text(size = 18, family = "sans")) +
-  theme(aspect.ratio = 1)
-
-# Collaboration First Designs and Pareto Margin
-ggplot() +
-  coord_fixed() +
-  geom_arc_bar(aes(x0 = y, y0 = x, r0 = 0, r = radius, start = 0, end = pi/2), data = df2, color = "gray88", fill = "gray88")+
-  geom_point(aes(x = y, y = x), data = df2, color = "black") +
-  geom_point(data = collab.task.first, aes(x = FinCost, y = EnvCost), color = "red2") +
-  stat_ellipse(data = collab.task.first, aes(x = FinCost, y = EnvCost), type = "norm", color = "red2", linetype = 2) +
-  labs(y = "Environmental Cost in $M", x = "Financial Cost in $M") + 
-  ggtitle("C") + 
-  scale_y_continuous(expand = c(0,0), limits = c(0, 60), sec.axis = sec_axis(~./1), breaks = c(0, 20, 40, 60))+
-  scale_x_continuous(expand = c(0,0), limits = c(0, 110), sec.axis = sec_axis(~./1), breaks = c(0, 20, 40, 60, 80, 100)) +
-  theme_classic() + theme(plot.title = element_text(size = 24, face = "bold"), 
-                          axis.text.x = element_text(size = 18, family = "sans"), 
-                          axis.text.y = element_text(size = 18, family = "sans"), 
-                          axis.title.x = element_text(size = 18, family = "sans"),
-                          axis.title.y = element_text(size = 18, family = "sans"),
-                          axis.text.y.right = element_blank(),
-                          axis.text.x.top = element_blank(),
-                          axis.ticks.x.top = element_blank(),
-                          axis.ticks.y.right = element_blank(),
-                          legend.title = element_text(size = 18, family = "sans"),
-                          legend.text = element_text(size = 18, family = "sans")) +
-  theme(aspect.ratio = 1)
-
-# Collaboration Second Designs and Pareto Margin
-ggplot() +
-  coord_fixed() +
-  geom_arc_bar(aes(x0 = y, y0 = x, r0 = 0, r = radius, start = 0, end = pi/2), data = df2, color = "gray88", fill = "gray88")+
-  geom_point(aes(x = y, y = x), data = df2, color = "black") +
-  geom_point(data = collab.task.second, aes(x = FinCost, y = EnvCost), color = "red2") +
-  stat_ellipse(data = collab.task.second, aes(x = FinCost, y = EnvCost), type = "norm", color = "red2", linetype = 2) +
-  labs(y = "Environmental Cost in $M", x = "Financial Cost in $M") + 
-  ggtitle("D") + 
-  scale_y_continuous(expand = c(0, 0), limits = c(0, 60), sec.axis = sec_axis(~./1), breaks = c(0, 20, 40, 60))+
-  scale_x_continuous(expand = c(0,0), limits = c(0, 110), sec.axis = sec_axis(~./1), breaks = c(0, 20,40,60,80,100)) +
-  theme_classic() + theme(plot.title = element_text(size = 24, face = "bold"), 
-                          axis.text.x = element_text(size = 18, family = "sans"), 
-                          axis.text.y = element_text(size = 18, family = "sans"), 
-                          axis.title.x = element_text(size = 18, family = "sans"),
-                          axis.title.y = element_text(size = 18, family = "sans"),
-                          axis.text.y.right = element_blank(),
-                          axis.text.x.top = element_blank(),
-                          axis.ticks.x.top = element_blank(),
-                          axis.ticks.y.right = element_blank(),
-                          legend.title = element_text(size = 18, family = "sans"),
-                          legend.text = element_text(size = 18, family = "sans")) +
-  theme(aspect.ratio = 1)
 
 
 ```
@@ -436,6 +305,128 @@ for (j in 1:nrow(df1)){
 t.value.CADS2 <- (mean(euc.bound.CADS2) - mean(bound.distance1))/sd(euc.bound.CADS2)
 
 ```
+
+
+## Plotting H1 Results
+
+The first hypothesis stated that participants using CADS will generate solutions no worse than 20% of a solution in the Pareto set. To test this hypothesis, we first identified the solutions in the pareto set. We then generated the 20% bound by creating a circle with a radius that is 20% of the euclidean cost of each pareto solution. Qualitatively, we then overalay the set of outcomes that each group generated using CADS on top of the circles. As we can see, all but 1 group generated a solution using CADS within the 20% radius of the pareto solutions.
+
+We can also conduct an one-sample non-inferiority test to test this hypothesis, where:
+
+$$H_{o}: \mu_{T} \geq \mu_{R} + M_{NI}$$ 
+and:
+
+$$H_{a}: \mu_{T} < \mu_{R} + M_{NI}$$ 
+where: 
+$\mu_{T}$ represents the sample mean, here representing the euclidean distance of the outcomes generated using CADS to their closest pareto solution,
+$\mu_{R}$ represents the reference mean, which is zero, 
+$M_{NI}$ represents the margin of non-inferiority, which is the mean of 20% radius for each of the pareto solutions.  
+
+If the null hypothesis can be rejected using an one-tail t-test, it would mean that the average distance of the CADS outcomes from their closest pareto solution is less than the non-inferiority margin. The t-value is calculated to be -1.81, which correspond to a p-value of < 0.05 at df 21. This shows we can reject the null hypothesis with a significance level of 0.05, showing the non-inferiority of CADS outcomes when compared against the pareto solutions. 
+
+The code chunk below generates the four panels of Figure 2 in the paper. 
+
+```{r nonInferiorityPlot, echo=FALSE}
+
+# Individual Designs and Pareto Margin
+ggplot() +
+  coord_fixed() +
+  geom_arc_bar(aes(x0 = y, y0 = x, r0 =0, r = radius, start = 0, end = pi/2), data = df2, color = "gray88", fill = "gray88")+
+  geom_point(aes(x = y, y = x), data = df2, color = "black") +
+  geom_point(data = individual.task, aes(x = FinCost, y = EnvCost), color = "red2") +
+  stat_ellipse(data = individual.task, aes(x = FinCost, y = EnvCost), type = "norm", color = "red2", linetype = 2) +
+  labs(y = "Environmental Cost in $M", x = "Financial Cost in $M") + 
+  ggtitle("A") + 
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 60), sec.axis = sec_axis(~./1), breaks = c(0, 20, 40, 60))+
+  scale_x_continuous(expand = c(0, 0), limits = c(0, 110), sec.axis = sec_axis(~./1), breaks = c(0, 20, 40, 60, 80, 100)) +
+  theme_classic() + theme(plot.title = element_text(size = 24, face = "bold"), 
+                          axis.text.x = element_text(size = 18, family = "sans"), 
+                          axis.text.y = element_text(size = 18, family = "sans"), 
+                          axis.title.x = element_text(size = 18, family = "sans"),
+                          axis.title.y = element_text(size = 18, family = "sans"),
+                          axis.text.y.right = element_blank(),
+                          axis.text.x.top = element_blank(),
+                          axis.ticks.x.top = element_blank(),
+                          axis.ticks.y.right = element_blank(),
+                          legend.title = element_text(size = 18, family = "sans"),
+                          legend.text = element_text(size = 18, family = "sans")) +
+  theme(aspect.ratio = 1)
+
+# CADS Designs and Pareto Margin
+ggplot() +
+  coord_fixed() +
+  geom_arc_bar(aes(x0 = y, y0 = x, r0 = 0, r = radius, start = 0, end = pi/2), data = df2, color = "gray88", fill = "gray88")+
+  geom_point(aes(x = y, y = x), data = df2, color = "black") +
+  geom_point(data = CADS.task, aes(x = FinCost, y = EnvCost), color = "red2") +
+  stat_ellipse(data = CADS.task, aes(x = FinCost, y = EnvCost), type = "norm", color = "red2", linetype = 2) +
+  labs(y = "Environmental Cost in $M", x = "Financial Cost in $M") + 
+  ggtitle("B") + 
+  scale_y_continuous(expand = c(0,0), limits = c(0, 60), sec.axis = sec_axis(~./1), breaks = c(0, 20, 40, 60))+
+  scale_x_continuous(expand = c(0,0), limits = c(0, 110), sec.axis = sec_axis(~./1), breaks = c(0, 20, 40, 60, 80, 100)) +
+  theme_classic() + theme(plot.title = element_text(size = 24, face = "bold"), 
+                          axis.text.x = element_text(size = 18, family = "sans"), 
+                          axis.text.y = element_text(size = 18, family = "sans"), 
+                          axis.title.x = element_text(size = 18, family = "sans"),
+                          axis.title.y = element_text(size = 18, family = "sans"),
+                          axis.text.y.right = element_blank(),
+                          axis.text.x.top = element_blank(),
+                          axis.ticks.x.top = element_blank(),
+                          axis.ticks.y.right = element_blank(),
+                          legend.title = element_text(size = 18, family = "sans"),
+                          legend.text = element_text(size = 18, family = "sans")) +
+  theme(aspect.ratio = 1)
+
+# Collaboration First Designs and Pareto Margin
+ggplot() +
+  coord_fixed() +
+  geom_arc_bar(aes(x0 = y, y0 = x, r0 = 0, r = radius, start = 0, end = pi/2), data = df2, color = "gray88", fill = "gray88")+
+  geom_point(aes(x = y, y = x), data = df2, color = "black") +
+  geom_point(data = collab.task.first, aes(x = FinCost, y = EnvCost), color = "red2") +
+  stat_ellipse(data = collab.task.first, aes(x = FinCost, y = EnvCost), type = "norm", color = "red2", linetype = 2) +
+  labs(y = "Environmental Cost in $M", x = "Financial Cost in $M") + 
+  ggtitle("C") + 
+  scale_y_continuous(expand = c(0,0), limits = c(0, 60), sec.axis = sec_axis(~./1), breaks = c(0, 20, 40, 60))+
+  scale_x_continuous(expand = c(0,0), limits = c(0, 110), sec.axis = sec_axis(~./1), breaks = c(0, 20, 40, 60, 80, 100)) +
+  theme_classic() + theme(plot.title = element_text(size = 24, face = "bold"), 
+                          axis.text.x = element_text(size = 18, family = "sans"), 
+                          axis.text.y = element_text(size = 18, family = "sans"), 
+                          axis.title.x = element_text(size = 18, family = "sans"),
+                          axis.title.y = element_text(size = 18, family = "sans"),
+                          axis.text.y.right = element_blank(),
+                          axis.text.x.top = element_blank(),
+                          axis.ticks.x.top = element_blank(),
+                          axis.ticks.y.right = element_blank(),
+                          legend.title = element_text(size = 18, family = "sans"),
+                          legend.text = element_text(size = 18, family = "sans")) +
+  theme(aspect.ratio = 1)
+
+# Collaboration Second Designs and Pareto Margin
+ggplot() +
+  coord_fixed() +
+  geom_arc_bar(aes(x0 = y, y0 = x, r0 = 0, r = radius, start = 0, end = pi/2), data = df2, color = "gray88", fill = "gray88")+
+  geom_point(aes(x = y, y = x), data = df2, color = "black") +
+  geom_point(data = collab.task.second, aes(x = FinCost, y = EnvCost), color = "red2") +
+  stat_ellipse(data = collab.task.second, aes(x = FinCost, y = EnvCost), type = "norm", color = "red2", linetype = 2) +
+  labs(y = "Environmental Cost in $M", x = "Financial Cost in $M") + 
+  ggtitle("D") + 
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 60), sec.axis = sec_axis(~./1), breaks = c(0, 20, 40, 60))+
+  scale_x_continuous(expand = c(0,0), limits = c(0, 110), sec.axis = sec_axis(~./1), breaks = c(0, 20,40,60,80,100)) +
+  theme_classic() + theme(plot.title = element_text(size = 24, face = "bold"), 
+                          axis.text.x = element_text(size = 18, family = "sans"), 
+                          axis.text.y = element_text(size = 18, family = "sans"), 
+                          axis.title.x = element_text(size = 18, family = "sans"),
+                          axis.title.y = element_text(size = 18, family = "sans"),
+                          axis.text.y.right = element_blank(),
+                          axis.text.x.top = element_blank(),
+                          axis.ticks.x.top = element_blank(),
+                          axis.ticks.y.right = element_blank(),
+                          legend.title = element_text(size = 18, family = "sans"),
+                          legend.text = element_text(size = 18, family = "sans")) +
+  theme(aspect.ratio = 1)
+
+
+```
+
 
 
 Due to the limited sample size, we could not include a large set of covariates in the regression models. The set of covariates we will add piecemeal will include the following: 
@@ -755,12 +746,6 @@ model.combined.weighted095.interact.lognormal <- lm(weightedTotal095Lognormal ~ 
 summary(model.combined.weighted095.interact.lognormal)
 
 # Coef Extraction
-
-TaskCoefficients <- c()
-
-TaskCoefficients <- c(as.list(coef(model.interact.covar.order.financial))[3],as.list(coef(model.combined.weighted005.interact))[3], as.list(coef(model.combined.weighted010.interact))[3], as.list(coef(model.combined.weighted015.interact))[3], as.list(coef(model.combined.weighted020.interact))[3], as.list(coef(model.combined.weighted025.interact))[3], as.list(coef(model.combined.weighted030.interact))[3], as.list(coef(model.combined.weighted035.interact))[3], as.list(coef(model.combined.weighted040.interact))[3], as.list(coef(model.combined.weighted045.interact))[3], as.list(coef(model.combined.weighted050.interact))[3], as.list(coef(model.combined.weighted055.interact))[3], as.list(coef(model.combined.weighted060.interact))[3], as.list(coef(model.combined.weighted065.interact))[3], as.list(coef(model.combined.weighted070.interact))[3], as.list(coef(model.combined.weighted075.interact))[3], as.list(coef(model.combined.weighted080.interact))[3], as.list(coef(model.combined.weighted085.interact))[3], as.list(coef(model.combined.weighted090.interact))[3], as.list(coef(model.combined.weighted095.interact))[3], as.list(coef(model.interact.order.financial.env))[3])
-
-pValues.raw <- c(summary((model.interact.covar.order.financial))$coefficients[3,3], as.list(summary(model.combined.weighted005.interact))$coefficients[3,3], as.list(summary(model.combined.weighted010.interact))$coefficients[3,3], as.list(summary(model.combined.weighted015.interact))$coefficients[3,3], as.list(summary(model.combined.weighted020.interact))$coefficients[3,3], as.list(summary(model.combined.weighted025.interact))$coefficients[3,3], as.list(summary(model.combined.weighted030.interact))$coefficients[3,3], as.list(summary(model.combined.weighted035.interact))$coefficients[3,3], as.list(summary(model.combined.weighted040.interact))$coefficients[3,3], as.list(summary(model.combined.weighted045.interact))$coefficients[3,3], as.list(summary(model.combined.weighted050.interact))$coefficients[3,3], as.list(summary(model.combined.weighted055.interact))$coefficients[3,3], as.list(summary(model.combined.weighted060.interact))$coefficients[3,3], as.list(summary(model.combined.weighted065.interact))$coefficients[3,3], as.list(summary(model.combined.weighted070.interact))$coefficients[3,3], as.list(summary(model.combined.weighted075.interact))$coefficients[3,3], as.list(summary(model.combined.weighted080.interact))$coefficients[3,3], as.list(summary(model.combined.weighted085.interact))$coefficients[3,3], as.list(summary(model.combined.weighted090.interact))$coefficients[3,3], as.list(summary(model.combined.weighted095.interact))$coefficients[3,3], as.list(summary(model.interact.order.financial.env))$coefficients[3,3])
 
 
 lognormalTaskCoefficients <- c(as.list(coef(model.interact.covar.order.financial.lognormal))[3],as.list(coef(model.combined.weighted005.interact.lognormal))[3], as.list(coef(model.combined.weighted010.interact.lognormal))[3], as.list(coef(model.combined.weighted015.interact.lognormal))[3], as.list(coef(model.combined.weighted020.interact.lognormal))[3], as.list(coef(model.combined.weighted025.interact.lognormal))[3], as.list(coef(model.combined.weighted030.interact.lognormal))[3], as.list(coef(model.combined.weighted035.interact.lognormal))[3], as.list(coef(model.combined.weighted040.interact.lognormal))[3], as.list(coef(model.combined.weighted045.interact.lognormal))[3], as.list(coef(model.combined.interact.lognormal))[3], as.list(coef(model.combined.weighted055.interact.lognormal))[3], as.list(coef(model.combined.weighted060.interact.lognormal))[3], as.list(coef(model.combined.weighted065.interact.lognormal))[3], as.list(coef(model.combined.weighted070.interact.lognormal))[3], as.list(coef(model.combined.weighted075.interact.lognormal))[3], as.list(coef(model.combined.weighted080.interact.lognormal))[3], as.list(coef(model.combined.weighted085.interact.lognormal))[3], as.list(coef(model.combined.weighted090.interact.lognormal))[3], as.list(coef(model.combined.weighted095.interact.lognormal))[3], as.list(coef(model.interact.env.covar.lognormal))[3])
